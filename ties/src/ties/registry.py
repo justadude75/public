@@ -60,6 +60,7 @@ PREDICATES = [
     ("cites", "Cites", "Cited by", ["document"], "entity", ["document"], "many", 0, 0, None, "normal", 43),
     ("affiliated_with", "Affiliated with", "Affiliate", [P], "entity", [O], "many", 1, 0, None, "normal", 44),
     ("position_held", "Position", "Held by", [P], "entity", [O, "topic"], "many", 1, 0, None, "normal", 45),
+    ("funded_by", "Funded by", "Funder of", ["document", P, O], "entity", [O], "many", 0, 0, None, "normal", 46),
     ("owns", "Owns", "Owned by", [P, O], "entity", [O, "document", PL], "many", 1, 0, None, "normal", 46),
     ("director_of", "Director of", "Director", [P], "entity", [O], "many", 1, 0, None, "normal", 47),
     ("about", "About", "Subject of", ["document", E], "entity", [ANY], "many", 0, 0, None, "normal", 48),

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from fastapi import HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
@@ -169,35 +171,66 @@ def register(app, vault, render, back, today_fn, entity_or_404) -> None:
 
     @app.get("/research/import", response_class=HTMLResponse)
     def research_import_page(request: Request):
-        return render(request, "research_import.html", nav="import",
-                      network=vault.get_meta("allow_network") == "1")
+        from .research_free import SOURCES
+        return render(request, "research_import.html", nav="import", sources=SOURCES,
+                      network=vault.get_meta("allow_network") == "1",
+                      contact=vault.get_meta("research_contact") or "")
+
+    fetched: dict[str, tuple[float, list]] = {}
 
     @app.post("/research/import", response_class=HTMLResponse)
     async def research_import_run(request: Request):
+        import hashlib
+        import time
+
+        from .research_free import FetchError, fetch_records, search_wikidata
         form = await request.form()
         kind = form.get("kind")
+        if kind == "contact":
+            vault.set_meta("research_contact", (form.get("contact") or "").strip())
+            return back("/research/import", flash="Saved")
+        if kind == "wikidata-search":
+            try:
+                research_import.require_network(vault)
+                hits = search_wikidata(form.get("query", ""))
+            except (ValueError, FetchError) as exc:
+                return back("/research/import", error=str(exc))
+            from .research_free import SOURCES
+            return render(request, "research_import.html", nav="import", sources=SOURCES,
+                          network=True, hits=hits, q=form.get("query", ""),
+                          contact=vault.get_meta("research_contact") or "")
+        key = hashlib.sha1(json.dumps(sorted((k, v) for k, v in form.items()
+                                             if k != "confirm")).encode()).hexdigest()
         try:
-            research_import.require_network(vault)
-            if kind == "openalex":
+            cached = fetched.get(key)
+            if cached and time.time() - cached[0] < 900:
+                records = cached[1]
+            elif kind == "openalex":
+                research_import.require_network(vault)
                 data = research_import.fetch_openalex(form.get("query") or None,
-                                                      form.get("orcid") or None,
-                                                      int(form.get("per_page") or 50))
+                                                      form.get("ident") or None,
+                                                      int(form.get("limit") or 50))
                 records = research_import.parse_openalex(data)
-            elif kind == "wikidata":
-                entity, labels = research_import.fetch_wikidata(form.get("qid", ""))
-                records = research_import.parse_wikidata(entity, labels)
             else:
-                raise ValueError("Unknown source")
-        except (ValueError, OSError) as exc:
+                records = fetch_records(vault, kind, query=form.get("query", "").strip(),
+                                        ident=form.get("ident", "").strip(),
+                                        limit=int(form.get("limit") or 20),
+                                        match_affiliations=bool(form.get("match_affiliations")),
+                                        children=int(form.get("children") or 0))
+            fetched[key] = (time.time(), records)
+        except (ValueError, OSError, FetchError) as exc:
             return back("/research/import", error=str(exc))
+        if not records:
+            return back("/research/import", error="Nothing found.")
         if form.get("confirm"):
-            report = importer.apply(vault, kind, records)
+            report = importer.apply(vault, kind, records, label=form.get("query") or form.get("ident"))
             research_import.grade_import_sources(vault, f"{kind}:", "B", 2)
+            fetched.pop(key, None)
             from .routes import _summary_line
             return back("/research/import", flash=f"{kind}: {_summary_line(report)}")
         report = importer.apply(vault, kind, records, dry_run=True)
         return render(request, "import_preview.html", report=report, info=None, nav="import",
-                      action="/research/import", title=f"Preview: {kind}",
+                      action="/research/import", title=f"Preview: {kind} ({len(records)} records)",
                       hidden={k: v for k, v in form.items() if k != "confirm"})
 
     # ── batch resolution ──────────────────────────────────────────────────

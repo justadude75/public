@@ -1,21 +1,42 @@
 {% extends "base.html" %}
 {% block title %}Bulk research import{% endblock %}
 {% block content %}
-<div class="page-head"><h1>Bulk import</h1><p class="muted">Pulls public records into this vault. Everything goes through the usual preview, re-import and undo.</p></div>
-{% if not network %}<div class="banner warn" style="border-radius:8px;margin-bottom:1rem">Network access is off for this vault. Turn it on in <a href="/settings">Settings</a> to fetch from these services. Only your search terms are sent.</div>{% endif %}
+<div class="page-head"><h1>Bulk import</h1><p class="muted">Free public sources, no account or key needed. Everything goes through the usual preview, re-import and undo. Only your search terms are sent.</p></div>
+{% if not network %}<div class="banner warn" style="border-radius:8px;margin-bottom:1rem">Network access is off for this vault. Turn it on in <a href="/settings">Settings</a> first.</div>{% endif %}
 <div class="grid2">
-  <section class="card"><h2>Publications (OpenAlex)</h2>
-    <p class="muted small">Works, authors (with ORCID), institutions (with ROR), authorship, affiliation and citation links.</p>
-    <form method="post" action="/research/import" class="form compact"><input type="hidden" name="kind" value="openalex">
-      <label>Search <input name="query" placeholder="e.g. grid-scale storage economics"></label>
-      <label>…or an author's ORCID <input name="orcid" placeholder="0000-0002-…"></label>
-      <label>How many works <input type="number" name="per_page" value="50" min="1" max="200"></label>
+  <section class="card"><h2>Publications (Crossref)</h2>
+    <p class="muted small">Papers with DOIs, authors (with ORCID where given), funders and citations. Free-text author affiliations are matched to research institutions with ROR.</p>
+    <form method="post" action="/research/import" class="form compact"><input type="hidden" name="kind" value="crossref">
+      <label>Search <input name="query" placeholder="e.g. grid-scale battery degradation"></label>
+      <label>…or a DOI or an author's ORCID <input name="ident" placeholder="10.1000/xyz or 0000-0002-…"></label>
+      <div class="row2"><label>How many papers <input type="number" name="limit" value="20" min="1" max="200"></label>
+        <label class="check-label"><input type="checkbox" name="match_affiliations" value="1" checked> match affiliations to institutions</label></div>
       <button class="btn primary sm" {{ 'disabled' if not network }}>Preview</button></form></section>
-  <section class="card"><h2>Wikidata</h2>
-    <p class="muted small">One item and its employers, education, memberships, positions, family, ownership and dates, with start and end dates where recorded.</p>
-    <form method="post" action="/research/import" class="form compact"><input type="hidden" name="kind" value="wikidata">
-      <label>Item id <input name="qid" placeholder="Q42"></label>
+  <section class="card"><h2>Companies (GLEIF)</h2>
+    <p class="muted small">Legal entities with LEI codes, registered addresses, and their parent and subsidiary companies.</p>
+    <form method="post" action="/research/import" class="form compact"><input type="hidden" name="kind" value="gleif">
+      <label>Company name <input name="query" placeholder="e.g. Siemens Energy AG"></label>
+      <label>…or an LEI <input name="ident" placeholder="20 characters"></label>
+      <label>Also import up to this many subsidiaries <input type="number" name="children" value="0" min="0" max="200"></label>
       <button class="btn primary sm" {{ 'disabled' if not network }}>Preview</button></form></section>
+  <section class="card"><h2>Research institutions (ROR)</h2>
+    <p class="muted small">Universities and research organizations with their parents, children, locations and Wikidata ids.</p>
+    <form method="post" action="/research/import" class="form compact"><input type="hidden" name="kind" value="ror">
+      <label>Name <input name="query" placeholder="e.g. Technical University of Munich"></label>
+      <label>…or a ROR id <input name="ident" placeholder="02kkvpp62"></label>
+      <button class="btn primary sm" {{ 'disabled' if not network }}>Preview</button></form></section>
+  <section class="card"><h2>Anything (Wikidata)</h2>
+    <p class="muted small">People, organizations and places with employers, education, positions, family, ownership and dates.</p>
+    <form method="post" action="/research/import" class="form compact"><input type="hidden" name="kind" value="wikidata-search">
+      <label>Search <input name="query" value="{{ q or '' }}" placeholder="e.g. Grace Hopper"></label>
+      <button class="btn sm" {{ 'disabled' if not network }}>Find</button></form>
+    {% if hits %}<ul class="plain">{% for h in hits %}<li class="row"><span><strong>{{ h.label }}</strong> <span class="muted small">{{ h.id }} · {{ h.description or '' }}</span></span>
+      <form method="post" action="/research/import"><input type="hidden" name="kind" value="wikidata"><input type="hidden" name="ident" value="{{ h.id }}"><button class="btn sm primary">Preview</button></form></li>{% endfor %}</ul>
+    {% elif hits is defined %}<p class="muted">No matches.</p>{% endif %}
+  </section>
 </div>
-<p class="muted small">Also available: contact, calendar and spreadsheet files on the <a href="/import">Import</a> page.</p>
+<section class="card" style="margin-top:1rem"><h2>Contact for polite access (optional)</h2>
+  <p class="muted small">Crossref serves requests faster when they include a contact address. It is sent only to these sources, only if you enter one.</p>
+  <form method="post" action="/research/import" class="inline"><input type="hidden" name="kind" value="contact"><input name="contact" value="{{ contact }}" placeholder="you@example.org"><button class="btn sm">Save</button></form></section>
+<p class="muted small">OpenAlex now needs a free API key, so it is not offered here. Contact, calendar and spreadsheet files are on the <a href="/import">Import</a> page.</p>
 {% endblock %}

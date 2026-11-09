@@ -187,26 +187,29 @@ def cmd_mcp(args) -> None:
 
 def cmd_research(args) -> None:
     from . import importer, research_import
+    from .research_free import FetchError, fetch_records
 
     vault = open_vault(Path(args.vault).expanduser())
     if args.allow_network:
         vault.set_meta("allow_network", "1")
     try:
-        research_import.require_network(vault)
         if args.source == "openalex":
-            data = research_import.fetch_openalex(args.query if not args.orcid else None,
-                                                  args.orcid, args.limit)
+            research_import.require_network(vault)
+            data = research_import.fetch_openalex(args.query if not args.id else None, args.id,
+                                                  args.limit)
             records = research_import.parse_openalex(data)
         else:
-            entity, labels = research_import.fetch_wikidata(args.query)
-            records = research_import.parse_wikidata(entity, labels)
-    except (ValueError, OSError) as exc:
+            records = fetch_records(vault, args.source, query=args.query, ident=args.id or "",
+                                    limit=args.limit, children=args.children,
+                                    match_affiliations=not args.no_affiliations)
+    except (ValueError, OSError, FetchError) as exc:
         sys.exit(str(exc))
-    report = importer.apply(vault, args.source, records, dry_run=not args.apply)
+    report = importer.apply(vault, args.source, records, dry_run=not args.apply,
+                            label=args.query or args.id)
     if args.apply:
         research_import.grade_import_sources(vault, f"{args.source}:", "B", 2)
-    print(f"{'Applied' if args.apply else 'Preview (add --apply to save)'}: {len(report.created)} new, "
-          f"{len(report.matched)} matched, {len(report.claims_added)} facts")
+    print(f"{'Applied' if args.apply else 'Preview (add --apply to save)'}: {len(records)} records, "
+          f"{len(report.created)} new, {len(report.matched)} matched, {len(report.claims_added)} facts")
 
 
 def cmd_resolve(args) -> None:
@@ -294,11 +297,14 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--agent", default="mcp", help="name recorded in the audit log")
     p.set_defaults(func=cmd_mcp)
 
-    p = sub.add_parser("research", help="fetch records from OpenAlex or Wikidata (needs network)")
-    p.add_argument("source", choices=["openalex", "wikidata"])
-    p.add_argument("query", nargs="?", default="", help="search text (OpenAlex) or item id (Wikidata)")
-    p.add_argument("--orcid", help="OpenAlex: all works by this ORCID")
-    p.add_argument("--limit", type=int, default=50)
+    p = sub.add_parser("research", help="fetch public records (Crossref, ROR, GLEIF, Wikidata)")
+    p.add_argument("source", choices=["crossref", "ror", "gleif", "wikidata", "openalex"])
+    p.add_argument("query", nargs="?", default="", help="search text")
+    p.add_argument("--id", help="DOI or ORCID (crossref), ROR id, LEI (gleif), Q-id (wikidata)")
+    p.add_argument("--limit", type=int, default=20)
+    p.add_argument("--children", type=int, default=0, help="gleif: also import subsidiaries")
+    p.add_argument("--no-affiliations", action="store_true",
+                   help="crossref: don't match affiliations to institutions")
     p.add_argument("--apply", action="store_true")
     p.add_argument("--allow-network", action="store_true", help="turn on network access for this vault")
     p.set_defaults(func=cmd_research)

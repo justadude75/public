@@ -17,10 +17,8 @@ USER_AGENT = "ties-research/0.2 (personal research tool)"
 
 
 def _get_json(url: str, timeout: float = 30) -> dict:
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT,
-                                               "Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as res:
-        return json.loads(res.read().decode("utf-8"))
+    from .research_free import get_json   # polite: spacing, backoff, Retry-After
+    return get_json(url, timeout=timeout)
 
 
 def require_network(vault) -> None:
