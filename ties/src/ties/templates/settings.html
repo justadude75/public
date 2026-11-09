@@ -24,6 +24,16 @@
   </section>
 
   <section class="card">
+    <h2>Network access</h2>
+    <p class="muted small">Off by default. Needed only to fetch research records (OpenAlex, Wikidata) or save copies of web sources. Only your search terms or the page address are sent.</p>
+    <form method="post" action="/settings/network" class="form compact">
+      <label class="check-label"><input type="checkbox" name="allow_network" value="1" {{ 'checked' if meta.allow_network == '1' }}> Allow this vault to fetch from the internet</label>
+      <button class="btn sm primary">Save</button>
+    </form>
+    <p class="small"><a href="/links">Link to another vault</a>{% if research_mode() %} · <a href="/research/import">Bulk research import</a>{% endif %}</p>
+  </section>
+
+  <section class="card">
     <h2>Markdown notes</h2>
     <form method="post" action="/settings" class="form compact">
       <input type="hidden" name="section" value="markdown">

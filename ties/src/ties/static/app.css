@@ -282,3 +282,14 @@ ol.paths { margin: 0; padding-left: 1.2rem; } ol.paths li { padding: .35rem 0; }
 @media print { .top, .foot, .banner, .actions { display: none !important; } .card { break-inside: avoid; } }
 pre.payload { max-height: 28rem; overflow: auto; background: var(--surface-2); padding: .75rem; border-radius: 8px; font-size: .78rem; white-space: pre-wrap; }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
+/* phase 4 */
+.badge.grade { background: var(--accent-soft); color: var(--accent); font-variant-numeric: tabular-nums; }
+.quote { font-size: .85rem; color: var(--muted); border-left: 3px solid var(--line); padding-left: .5rem; margin-top: .2rem; }
+table.ach select { width: auto; padding: .2rem .3rem; }
+table.ach tr.diag td:first-child { border-left: 3px solid var(--accent); }
+table.ach tr.totals td { background: var(--surface-2); }
+.stance.s-CC, .stance.s-C { background: var(--ok-soft); } .stance.s-I, .stance.s-II { background: var(--late-soft); }
+.side { border: 1px solid var(--line); border-radius: 8px; padding: .6rem .75rem; display: flex; flex-direction: column; gap: .3rem; align-items: flex-start; }
+.menu-body a { display: block; padding: .2rem 0; }
+.actions details.menu > summary.btn { padding: .42rem .8rem; color: var(--text); font-size: .92rem; }
+.actions details.menu .menu-body { top: 2.4rem; }

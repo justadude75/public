@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% from "macros.html" import picker %}
+{% block title %}{{ d.source.title }}{% endblock %}
+{% block content %}
+{% set s = d.source %}
+<div class="page-head"><div><h1>{{ s.title or s.uri }}</h1>
+  <p class="muted">{{ s.source_type or s.kind }}{% if s.author %} · {{ s.author }}{% endif %}{% if s.published_at %} · {{ s.published_at }}{% endif %} · added {{ s.captured_at | day }}
+  {% if s.uri %} · <a href="{{ s.uri }}" target="_blank" rel="noreferrer">open original</a>{% endif %}</p></div>
+  {% if s.reliability or s.credibility %}<span class="badge grade">{{ s.reliability or '?' }}{{ s.credibility or '?' }}</span>{% endif %}</div>
+<div class="grid2">
+<div>
+  <section class="card">
+    <h2>Claims from this source ({{ d.claims | length }})</h2>
+    {% if d.claims %}<ul class="facts">{% for c in d.claims %}
+      <li><span class="k"><a href="/e/{{ c.subject_id }}">{{ c.subject_name }}</a></span>
+        <span class="v">{{ c.predicate_label }}: {% if c.object_id %}<a href="/e/{{ c.object_id }}">{{ c.object_name }}</a>{% else %}{{ c.value_text }}{% endif %}
+          {% if c.valid_from or c.valid_to %}<span class="muted small">{{ c.valid_from or '…' }} – {{ c.valid_to or '' }}</span>{% endif %}
+          {% if c.quote %}<div class="quote">“{{ c.quote }}”</div>{% endif %}</span>
+        <span class="meta"><span class="badge muted">{{ c.status }}</span></span></li>
+    {% endfor %}</ul>{% else %}<p class="muted">Nothing recorded from this source yet.</p>{% endif %}
+    <details class="add" open>
+      <summary>Record a claim this source makes</summary>
+      <form method="post" action="/sources/{{ s.id }}" class="form compact" data-relation-form>
+        <input type="hidden" name="action" value="claim">
+        <label>About {{ picker('subject', type='', create='person,organization,place,document', placeholder='Who or what…') }}</label>
+        <div class="row2">
+          <label>Field <select name="predicate_id" data-relation-select required><option value="" disabled selected>Choose…</option>{% for p in preds %}<option value="{{ p.id }}" data-range-types="{{ p.range_types }}">{{ p.label }}</option>{% endfor %}</select></label>
+          <label>Value (text) <input name="value"></label>
+        </div>
+        <label>…or linked to {{ picker('object', type='', create='person,organization,place,document', placeholder='Person, organization, place…') }}</label>
+        <div class="row2"><label>True from <input name="valid_from" placeholder="YYYY"></label><label>Until <input name="valid_to"></label></div>
+        <label>Supporting quote <textarea name="quote" rows="2"></textarea></label>
+        <button class="btn primary sm">Record claim</button>
+      </form>
+    </details>
+  </section>
+  {% if s.content %}<section class="card"><h2>Excerpt</h2><div class="notes">{{ s.content }}</div></section>{% endif %}
+</div>
+<div>
+  <section class="card">
+    <h2>Grading</h2>
+    <p class="small">{% if d.reliability_label %}<strong>{{ s.reliability }}</strong> {{ d.reliability_label }}{% else %}Reliability not graded{% endif %} ·
+      {% if d.credibility_label %}<strong>{{ s.credibility }}</strong> {{ d.credibility_label }}{% else %}credibility not graded{% endif %}</p>
+    {% if d.original %}<p class="small">Copy of <a href="/sources/{{ d.original.id }}">{{ d.original.title }}</a> — not counted as independent.</p>{% endif %}
+    {% if d.copies %}<p class="small">Repeated by: {% for c in d.copies %}<a href="/sources/{{ c.id }}">{{ c.title }}</a>{{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}
+    <form method="post" action="/sources/{{ s.id }}" class="form compact">
+      <input type="hidden" name="action" value="grade">
+      <div class="row2">
+        <label>Reliability <select name="reliability"><option value="">—</option>{% for k, v in RELIABILITY.items() %}<option value="{{ k }}" {{ 'selected' if s.reliability == k }}>{{ k }} — {{ v }}</option>{% endfor %}</select></label>
+        <label>Credibility <select name="credibility"><option value="">—</option>{% for k, v in CREDIBILITY.items() %}<option value="{{ k }}" {{ 'selected' if s.credibility == k }}>{{ k }} — {{ v }}</option>{% endfor %}</select></label>
+      </div>
+      <label>Copies another source <select name="independent_of"><option value="">no, independent</option>{% for o in all_sources if o.id != s.id %}<option value="{{ o.id }}" {{ 'selected' if s.independent_of == o.id }}>{{ o.title | truncate(70) }}</option>{% endfor %}</select></label>
+      <button class="btn sm">Save grading</button>
+    </form>
+  </section>
+  <section class="card">
+    <h2>Saved copy</h2>
+    {% if d.blob %}<p class="small">{{ d.blob.content_type }} · {{ d.blob.size }} bytes · fetched {{ d.blob.fetched_at }}<br><span class="muted">sha256 {{ d.blob.sha256[:16] }}…</span><br>
+      <a href="/sources/{{ s.id }}/copy">Download saved copy</a>{% if d.blob.archive_url %} · <a href="{{ d.blob.archive_url }}" target="_blank" rel="noreferrer">Internet Archive</a>{% endif %}</p>
+    {% else %}<p class="muted small">No copy saved.</p>{% endif %}
+    {% if s.uri %}<form method="post" action="/sources/{{ s.id }}"><input type="hidden" name="action" value="snapshot"><button class="btn sm" {{ 'disabled' if not network }}>Save a copy now</button></form>
+    {% if not network %}<p class="muted small">Fetching is off. Allow network access in <a href="/settings">Settings</a>.</p>{% endif %}{% endif %}
+  </section>
+  {% if projects %}<section class="card"><h2>Projects</h2>
+    <form method="post" action="/sources/{{ s.id }}" class="inline"><input type="hidden" name="action" value="project">
+      <select name="project">{% for p in projects %}<option value="{{ p.id }}">{{ p.title }}</option>{% endfor %}</select><button class="btn sm">Add to project</button></form></section>{% endif %}
+</div>
+</div>
+{% endblock %}

@@ -57,6 +57,9 @@ def create_app(vault: Vault, today_fn=date.today) -> FastAPI:
                        EVENT_KINDS=EVENT_KINDS, EVENT_STATUSES=EVENT_STATUSES,
                        ENGAGEMENTS=ENGAGEMENTS, TYPE_LABELS=TYPE_LABELS,
                        encrypted=vault.encrypted, vault_name=vault.path.name)
+    from .registry import CREDIBILITY, RELIABILITY, SOURCE_TYPES
+    env.globals.update(RELIABILITY=RELIABILITY, CREDIBILITY=CREDIBILITY, SOURCE_TYPES=SOURCE_TYPES,
+                       research_mode=lambda: vault.get_meta("vault_kind") == "research")
     env.filters["rel"] = lambda d: _relative(d if isinstance(d, date) else repo.parse_day(d),
                                              today_fn())
     env.filters["day"] = lambda s: (s or "")[:10]
@@ -73,6 +76,15 @@ def create_app(vault: Vault, today_fn=date.today) -> FastAPI:
         q = {k: v for k, v in params.items() if v}
         return RedirectResponse(url + (("?" + urlencode(q)) if q else ""), status_code=303)
 
+    def _asof(request: Request, entity_id: str):
+        known = request.query_params.get("known_at") or None
+        valid = request.query_params.get("valid_at") or None
+        if not (known or valid):
+            return None
+        from . import research
+        return {"known_at": known, "valid_at": valid,
+                "rows": research.entity_as_of(vault, entity_id, known, valid)}
+
     def entity_or_404(entity_id: str) -> dict:
         ent = repo.get_entity(vault, entity_id)
         if not ent:
@@ -83,6 +95,8 @@ def create_app(vault: Vault, today_fn=date.today) -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     def today(request: Request):
+        if vault.get_meta("vault_kind") == "research":
+            return RedirectResponse("/projects", status_code=303)
         return render(request, "today.html", t=scoring.today_view(vault, today_fn()), nav="today")
 
     @app.get("/people", response_class=HTMLResponse)
@@ -182,6 +196,11 @@ def create_app(vault: Vault, today_fn=date.today) -> FastAPI:
             changes=memory.changed_since_last_contact(vault, entity_id, today_fn()),
             ai_ready=AIClient.from_vault(vault) is not None,
             all_goals=__import__("ties.strategy", fromlist=["goals"]).goals(vault),
+            support=__import__("ties.research", fromlist=["support"]).support(vault),
+            asof=_asof(request, entity_id),
+            linked=__import__("ties.crossvault", fromlist=["linked_view"]).linked_view(vault, entity_id),
+            projects=__import__("ties.research", fromlist=["projects"]).projects(vault)
+            if vault.get_meta("vault_kind") == "research" else [],
             entity_goals=vault.all("select g.id, g.title, gl.role from goal_link gl join goal g "
                                    "on g.id=gl.goal_id where gl.target_id=? and g.status='active'",
                                    (entity_id,)),

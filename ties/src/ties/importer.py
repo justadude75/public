@@ -145,7 +145,8 @@ def _key(*parts: Any) -> str:
 def _ref_key(ref: Ref | None) -> str:
     if ref is None:
         return "self"
-    return ref.entity_id or ref.key or normalize_name(ref.name or "")
+    return ref.entity_id or ref.key or (normalize_name(ref.name) if ref.name
+                                        else json.dumps(sorted(ref.identifiers)))
 
 
 class _Applier:
@@ -441,7 +442,7 @@ class _Applier:
                 "select entity_id from participation where event_id=? and entity_id<>?",
                 (eid, self.ego))]
         elif rec.kind == "entity":
-            self_id = self.resolve_self(rec)
+            self_id = self.by_origin.get(rec.origin) or self.resolve_self(rec)
             self.by_origin[rec.origin] = self_id
             self.apply_entity_fields(rec, self_id, src, seen)
             attendees = [self_id]
@@ -518,6 +519,10 @@ def apply(vault: Vault, importer: str, records: list[ImportRecord], dry_run: boo
             # entities first, so events and claims can refer to them
             ordered = [r for r in records if r.kind == "entity"] + \
                       [r for r in records if r.kind != "entity"]
+            # first create or match every entity, so records can refer to each other in any order
+            for rec in ordered:
+                if rec.kind == "entity":
+                    app.by_origin[rec.origin] = app.resolve_self(rec)
             for rec in ordered:
                 app.apply_record(rec)
             for eid in app.touched:

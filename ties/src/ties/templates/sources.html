@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Sources{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Sources</h1>
+  <form class="filters"><input type="search" name="q" value="{{ q }}" placeholder="Title, author or address">
+    <select name="project"><option value="">All projects</option>{% for p in projects %}<option value="{{ p.id }}" {{ 'selected' if p.id == project }}>{{ p.title }}</option>{% endfor %}</select>
+    <button class="btn">Filter</button></form></div>
+<section class="card flush">
+  {% if rows %}
+  <table class="list"><thead><tr><th>Source</th><th>Type</th><th>Grade</th><th>Published</th><th class="num">Claims</th></tr></thead><tbody>
+  {% for s in rows %}<tr><td><a href="/sources/{{ s.id }}">{{ s.title or s.uri }}</a>{% if s.author %} <span class="muted small">· {{ s.author }}</span>{% endif %}{% if s.independent_of %} <span class="badge muted">copy</span>{% endif %}</td>
+    <td class="muted">{{ s.source_type or s.kind }}</td><td>{% if s.reliability or s.credibility %}<span class="badge" title="{{ RELIABILITY.get(s.reliability or '', '') }} · {{ CREDIBILITY.get(s.credibility or 0, '') }}">{{ s.reliability or '?' }}{{ s.credibility or '?' }}</span>{% endif %}</td>
+    <td class="muted">{{ s.published_at or '' }}</td><td class="num">{{ s.n_claims }}</td></tr>{% endfor %}
+  </tbody></table>
+  {% else %}<p class="muted pad">No sources yet.</p>{% endif %}
+</section>
+<section class="card" id="add" style="margin-top:1rem">
+  <h2>Add a source</h2>
+  <form method="post" action="/sources" class="form compact">
+    <div class="row2"><label>Title <input name="title" required></label><label>Address <input name="uri" placeholder="https://…"></label></div>
+    <div class="row4">
+      <label>Author <input name="author"></label>
+      <label>Published <input name="published_at" placeholder="YYYY or YYYY-MM-DD"></label>
+      <label>Type <select name="source_type">{% for t in SOURCE_TYPES %}<option>{{ t }}</option>{% endfor %}</select></label>
+      <label>Project <select name="project"><option value="">—</option>{% for p in projects %}<option value="{{ p.id }}" {{ 'selected' if p.id == project }}>{{ p.title }}</option>{% endfor %}</select></label>
+    </div>
+    <div class="row2">
+      <label>Source reliability <select name="reliability"><option value="">not graded</option>{% for k, v in RELIABILITY.items() %}<option value="{{ k }}">{{ k }} — {{ v }}</option>{% endfor %}</select></label>
+      <label>Information credibility <select name="credibility"><option value="">not graded</option>{% for k, v in CREDIBILITY.items() %}<option value="{{ k }}">{{ k }} — {{ v }}</option>{% endfor %}</select></label>
+    </div>
+    <label>Excerpt or notes <textarea name="excerpt" rows="4" placeholder="Paste the relevant passage; it becomes searchable."></textarea></label>
+    <button class="btn primary sm">Add source</button>
+  </form>
+</section>
+{% endblock %}

@@ -234,7 +234,7 @@ def register(app, vault, render, back, today_fn, entity_or_404) -> None:
     def settings(request: Request):
         meta = {k: vault.get_meta(k) or "" for k in (
             "ai_base_url", "ai_chat_model", "ai_embed_model", "md_folder", "md_write_gid",
-            "gateway_base_url", "gateway_model", "gateway_enabled")}
+            "gateway_base_url", "gateway_model", "gateway_enabled", "allow_network")}
         counts = {"chunks": vault.scalar("select count(*) from chunk"),
                   "embedded": vault.scalar("select count(*) from embedding")}
         from . import triggers

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Hypotheses · {{ p.title }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Competing hypotheses</h1><p class="muted"><a href="/projects/{{ p.id }}">{{ p.title }}</a> · Rate each piece of evidence against each hypothesis. The hypothesis with the <em>least</em> evidence against it ranks first; evidence rated differently across hypotheses is the most useful (diagnostic).</p></div></div>
+{% if m.hypotheses and m.evidence %}
+<form method="post" action="/projects/{{ p.id }}/ach">
+<section class="card flush">
+  <table class="list ach">
+    <thead><tr><th>Evidence</th>{% for h in m.hypotheses %}<th>{{ h.title }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for it in m.evidence %}
+    <tr class="{{ 'diag' if it.diagnostic }}">
+      <td>{{ it.label }}{% if it.grade %} <span class="badge">{{ it.grade }}</span>{% endif %}{% if it.support %} <span class="badge">{{ it.support.independent }} src · {{ it.support.best_grade }}</span>{% endif %}{% if it.diagnostic %} <span class="badge st-planned">diagnostic</span>{% endif %}</td>
+      {% for h in m.hypotheses %}{% set cur = m.ratings.get((h.id, it.id), '') %}
+      <td><select name="r-{{ h.id }}-{{ it.id }}" class="stance s-{{ cur }}"><option value="" {{ 'selected' if not cur }}>—</option>{% for s in stances %}<option {{ 'selected' if s == cur }}>{{ s }}</option>{% endfor %}</select></td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+    <tr class="totals"><td><strong>Weighted inconsistency</strong> (lower is better)</td>{% for h in m.hypotheses %}<td><strong>{{ h.inconsistency }}</strong> <span class="muted small">/ +{{ h.consistency }}</span></td>{% endfor %}</tr>
+    </tbody>
+  </table>
+</section>
+<p><button class="btn primary">Save ratings</button> <span class="muted small">CC strongly consistent · C consistent · N neutral · I inconsistent · II strongly inconsistent</span></p>
+</form>
+<section class="card"><h2>Ranking</h2><ol>{% for h in m.ranked %}<li>{{ h.title }} <span class="muted small">— {{ h.inconsistency }} against, {{ h.consistency }} for</span></li>{% endfor %}</ol></section>
+{% endif %}
+<div class="grid2" style="margin-top:1rem">
+  <section class="card"><h2>Add a hypothesis</h2>
+    <form method="post" action="/projects/{{ p.id }}/ach" class="form compact"><input name="hypothesis" placeholder="One possible explanation" required><button class="btn sm">Add</button></form></section>
+  <section class="card"><h2>Add evidence</h2>
+    <form method="post" action="/projects/{{ p.id }}/ach" class="form compact"><input name="evidence" placeholder="A fact, observation or source finding" required><button class="btn sm">Add</button></form></section>
+</div>
+{% endblock %}

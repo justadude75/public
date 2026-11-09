@@ -55,8 +55,11 @@ def cmd_init(args) -> None:
     except VaultError as exc:
         sys.exit(str(exc))
     repo.init_vault(vault, name)
+    if args.research:
+        vault.set_meta("vault_kind", "research")
     vault.close()
-    print(f"Created {'encrypted ' if passphrase else ''}vault at {path}")
+    print(f"Created {'encrypted ' if passphrase else ''}{'research ' if args.research else ''}"
+          f"vault at {path}")
     print(f"Start it with: ties serve --vault {path}")
 
 
@@ -105,7 +108,11 @@ def cmd_demo(args) -> None:
         sys.exit(f"{path} already exists. Choose another path with --vault.")
     path.parent.mkdir(parents=True, exist_ok=True)
     vault = Vault(path)
-    build_demo(vault)
+    if args.research:
+        from .demo import build_research_demo
+        build_research_demo(vault)
+    else:
+        build_demo(vault)
     vault.close()
     print(f"Demo vault with sample people and events created at {path}")
     print(f"Open it with: ties serve --vault {path}")
@@ -178,6 +185,64 @@ def cmd_mcp(args) -> None:
     serve_stdio(vault, agent=args.agent)
 
 
+def cmd_research(args) -> None:
+    from . import importer, research_import
+
+    vault = open_vault(Path(args.vault).expanduser())
+    if args.allow_network:
+        vault.set_meta("allow_network", "1")
+    try:
+        research_import.require_network(vault)
+        if args.source == "openalex":
+            data = research_import.fetch_openalex(args.query if not args.orcid else None,
+                                                  args.orcid, args.limit)
+            records = research_import.parse_openalex(data)
+        else:
+            entity, labels = research_import.fetch_wikidata(args.query)
+            records = research_import.parse_wikidata(entity, labels)
+    except (ValueError, OSError) as exc:
+        sys.exit(str(exc))
+    report = importer.apply(vault, args.source, records, dry_run=not args.apply)
+    if args.apply:
+        research_import.grade_import_sources(vault, f"{args.source}:", "B", 2)
+    print(f"{'Applied' if args.apply else 'Preview (add --apply to save)'}: {len(report.created)} new, "
+          f"{len(report.matched)} matched, {len(report.claims_added)} facts")
+
+
+def cmd_resolve(args) -> None:
+    from . import resolution
+
+    vault = open_vault(Path(args.vault).expanduser())
+    result = resolution.batch(vault, auto_threshold=args.auto)
+    for m in result["merged"]:
+        print(f"merged  {m['drop']['display_name']} -> {m['keep']['display_name']}  ({m['score']})")
+    for c in result["candidates"][:args.show]:
+        print(f"{c['score']:.2f}  {c['a']['display_name']}  ~  {c['b']['display_name']}  "
+              f"[{', '.join(c['reasons'])}]")
+    print(f"{len(result['merged'])} merged, {len(result['candidates'])} candidates left for review")
+
+
+def cmd_link(args) -> None:
+    from . import crossvault
+
+    vault = open_vault(Path(args.vault).expanduser())
+    other_path = Path(args.other).expanduser()
+    if is_encrypted(other_path) and not os.environ.get("TIES_RESEARCH_PASSPHRASE"):
+        os.environ["TIES_RESEARCH_PASSPHRASE"] = getpass.getpass(f"Passphrase for {other_path.name}: ")
+    other = crossvault.open_other(str(other_path))
+    if other is None:
+        sys.exit(f"Could not open {other_path}")
+    vault.set_meta("other_vault_path", str(other_path))
+    n = 0
+    for c in crossvault.candidates(vault, other):
+        answer = "y" if args.yes else input(
+            f"Link {c['local']['display_name']} <-> {c['other_name']} ({c['why']})? [y/N] ")
+        if answer.strip().lower() == "y":
+            crossvault.confirm(vault, str(other_path), c["local"]["id"], c["other_id"], c["other_name"])
+            n += 1
+    print(f"{n} links saved. Nothing was copied between vaults.")
+
+
 def cmd_backup(args) -> None:
     vault = open_vault(Path(args.vault).expanduser())
     dest = vault.backup(Path(args.dest).expanduser())
@@ -193,6 +258,7 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("init", help="create a new vault")
     p.add_argument("--encrypt", action="store_true", help="encrypt the vault with a passphrase")
     p.add_argument("--name", help="your name")
+    p.add_argument("--research", action="store_true", help="create a research vault")
     p.set_defaults(func=cmd_init)
 
     p = sub.add_parser("serve", help="run the app in your browser (localhost only)")
@@ -201,6 +267,7 @@ def main(argv: list[str] | None = None) -> None:
     p.set_defaults(func=cmd_serve)
 
     p = sub.add_parser("demo", help="create a vault filled with sample data to try things out")
+    p.add_argument("--research", action="store_true", help="a sample research vault instead")
     p.set_defaults(func=cmd_demo)
 
     p = sub.add_parser("export", help="export everything as JSON")
@@ -227,7 +294,27 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--agent", default="mcp", help="name recorded in the audit log")
     p.set_defaults(func=cmd_mcp)
 
-    for name in ("serve", "demo", "export", "backup", "init", "restore", "import", "mcp"):
+    p = sub.add_parser("research", help="fetch records from OpenAlex or Wikidata (needs network)")
+    p.add_argument("source", choices=["openalex", "wikidata"])
+    p.add_argument("query", nargs="?", default="", help="search text (OpenAlex) or item id (Wikidata)")
+    p.add_argument("--orcid", help="OpenAlex: all works by this ORCID")
+    p.add_argument("--limit", type=int, default=50)
+    p.add_argument("--apply", action="store_true")
+    p.add_argument("--allow-network", action="store_true", help="turn on network access for this vault")
+    p.set_defaults(func=cmd_research)
+
+    p = sub.add_parser("resolve", help="score likely duplicates; optionally merge the surest")
+    p.add_argument("--auto", type=float, help="merge pairs scoring at least this (e.g. 0.95)")
+    p.add_argument("--show", type=int, default=30)
+    p.set_defaults(func=cmd_resolve)
+
+    p = sub.add_parser("link", help="link entries to the same people in another vault")
+    p.add_argument("other", help="path to the other vault")
+    p.add_argument("--yes", action="store_true", help="accept every suggested link")
+    p.set_defaults(func=cmd_link)
+
+    for name in ("serve", "demo", "export", "backup", "init", "restore", "import", "mcp",
+                 "research", "resolve", "link"):
         sub.choices[name].add_argument("--vault", default=argparse.SUPPRESS,
                                        help="vault file")
     args = parser.parse_args(argv)

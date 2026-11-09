@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Linked vault{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Link to another vault</h1><p class="muted">Connect people here to the same people in a research vault (or the other way round). Nothing is copied: a confirmed link only lets a profile show the other vault's facts, read-only. An encrypted vault opens only if <code>TIES_RESEARCH_PASSPHRASE</code> is set.</p></div></div>
+<section class="card" style="margin-bottom:1rem">
+  <form method="post" action="/links" class="inline"><input type="hidden" name="action" value="path">
+    <input name="path" value="{{ path }}" placeholder="/path/to/research.vault"><button class="btn sm">Use this vault</button></form>
+  {% if path and not available %}<p class="banner err" style="border-radius:8px">Could not open that vault.</p>{% endif %}
+</section>
+{% if available %}
+<section class="card">
+  <h2>Possible matches</h2>
+  {% if cands %}<ul class="review">{% for c in cands %}
+    <li><span class="review-main"><a href="/e/{{ c.local.id }}">{{ c.local.display_name }}</a> ↔ {{ c.other_name }} <span class="muted small">{{ c.why }}</span></span>
+      <form method="post" action="/links"><input type="hidden" name="action" value="confirm"><input type="hidden" name="local" value="{{ c.local.id }}"><input type="hidden" name="other" value="{{ c.other_id }}"><input type="hidden" name="name" value="{{ c.other_name }}"><button class="btn sm primary">Link</button></form></li>
+  {% endfor %}</ul>{% else %}<p class="muted">No unlinked matches.</p>{% endif %}
+</section>
+{% endif %}
+{% endblock %}

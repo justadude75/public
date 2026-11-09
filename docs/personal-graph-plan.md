@@ -1,6 +1,6 @@
 # Personal Graph & Entity Resolution: Conceptual Plan
 
-**Status:** Draft v0.3 · 2026-11-09 (updated with your decisions; the Phase 0 baseline is built in [`ties/`](../ties/))
+**Status:** v0.4 · 2026-11-09. All phases are built in [`ties/`](../ties/); see [`ties/BUILD_STATUS.md`](../ties/BUILD_STATUS.md).
 **Scope:** Data model, entity resolution, relationship engine, semantic layer, research vault, a simple frontend, and a phased roadmap.
 
 ---
@@ -705,10 +705,10 @@ Example of what actually leaves the machine:
 | Phase | Deliverable | Contents |
 |---|---|---|
 | **0: Foundation** ✅ built (`ties/`) | Personal MVP you use daily | Encrypted SQLite vault; schema (sources, entities, identifiers, names, claims, events, participation, tags, relationship profiles); forms for entities, events and relationships with resolve-as-you-type autocomplete; profile page; Today view with days since contact, cadence and next due; timeline; JSON export and backup |
-| **1: Capture and memory** | Notes become structure | Post-meeting flow (section 4.12); Markdown templates and folder import, read by fixed rules with no AI needed (Appendix C); commitments (open loops); per-entity link library; inferences with confirm and reject; rule-based inferences; review inbox; quick-capture box parsed by the local model into proposed claims; FTS5 and local embeddings; hybrid search; "memory" summaries; "changed since last contact" |
-| **2: Importers, resolution and triggers** | Data from elsewhere, kept clean | Importer contract with vCard, iCal, CSV and JSON importers, dry-run diff and batch rollback; background duplicate resolution (merge, split, not-the-same, undo); trigger engine (recurring dates, calendar offsets, fact changes, commitments); pre-meeting briefs; graph explorer |
-| **3: Strategic** | Leverage beyond human capacity | Goals; warm-introduction paths; brokerage and introduction suggestions; asks and offers matching; weekly review; local MCP server; privacy gateway for optional outside reasoning |
-| **4: Research vault** | Standalone research tool | Projects; source library with snapshots and reliability grades; bulk importers (OpenAlex, ORCID, Wikidata and others); Splink batch resolution; as-of queries; contradictions; hypotheses matrix; FtM, GraphML and CSV export; large-graph view (Sigma.js) |
+| **1: Capture and memory** ✅ built | Notes become structure | Post-meeting flow (section 4.12); Markdown templates and folder import, read by fixed rules with no AI needed (Appendix C); commitments (open loops); per-entity link library; inferences with confirm and reject; rule-based inferences; review inbox; quick-capture box parsed by the local model into proposed claims; FTS5 and local embeddings; hybrid search; "memory" summaries; "changed since last contact" |
+| **2: Importers, resolution and triggers** ✅ built | Data from elsewhere, kept clean | Importer contract with vCard, iCal, CSV and JSON importers, dry-run diff and batch rollback; background duplicate resolution (merge, split, not-the-same, undo); trigger engine (recurring dates, calendar offsets, fact changes, commitments); pre-meeting briefs; graph explorer |
+| **3: Strategic** ✅ built | Leverage beyond human capacity | Goals; warm-introduction paths; brokerage and introduction suggestions; asks and offers matching; weekly review; local MCP server; privacy gateway for optional outside reasoning |
+| **4: Research vault** ✅ built | Standalone research tool | Projects; source library with snapshots and reliability grades; bulk importers (OpenAlex, ORCID, Wikidata and others); Splink batch resolution; as-of queries; contradictions; hypotheses matrix; FtM, GraphML and CSV export; large-graph view (Sigma.js) |
 
 **Suggested first build slice:** Phase 0 alone. It gets the daily loop working with no AI at all: enter people, log interactions, and see who is due. Every later layer then has real data to work on.
 
@@ -718,7 +718,9 @@ Example of what actually leaves the machine:
 
 All earlier questions are answered (section 0.1). Two open choices remain. Neither is needed until Phase 1, and both have a safe default.
 
-1. **Optional Markdown write-backs** (section 4.11). The default is both **off**.
+> **Decided:** the `gid` line is **on**; the `_graph/` folder stays off. The proposed inference defaults below were accepted.
+
+1. **Optional Markdown write-backs** (section 4.11).
    - **A `gid` line in each note's properties.** The importer recognizes a note by its file path. If you rename or move a note, the importer treats it as a new note: the old note's facts look removed, and the renamed note is offered as a possible duplicate. With this option on, the importer writes one line (`gid: …`) into the note's properties the first time it reads it, and recognizes the note by that ID from then on. The cost is that the app edits your files, though only that one line. Recommended: **turn on** once you import notes regularly.
    - **A generated `_graph/` folder.** The app writes read-only Markdown pages into your notes folder: one per contact (summary, current facts, last contact, next due, open follow-ups) and a `Today.md`. This lets you see and link to app data from inside Obsidian. The cost is that the data is copied out of the encrypted vault into plain-text files, and those files get overwritten on every sync. Recommended: **leave off** unless you want Obsidian as a second viewer.
 2. **Which rule-based inferences to enable** (section 4.3). Inferences are only *suggestions*. They appear in their own section of a profile and as dashed edges in the graph, and you confirm or reject each one. A rejection is remembered, so the same suggestion never comes back. Proposed defaults:

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ties"
-version = "0.1.0"
+version = "0.4.0"
 description = "A local-first personal relationship graph"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -13,6 +13,7 @@ dependencies = [
   "uvicorn>=0.27",
   "jinja2>=3.1",
   "python-multipart>=0.0.9",
+  "pyyaml>=6",
 ]
 
 [project.optional-dependencies]
@@ -29,7 +30,7 @@ ties = "ties.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-ties = ["migrations/*.sql", "templates/*.html", "static/*"]
+ties = ["migrations/*.sql", "templates/*.html", "static/*", "static/vendor/*", "sample/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

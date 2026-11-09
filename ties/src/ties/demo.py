@@ -110,3 +110,53 @@ def build_demo(vault: Vault, today: date | None = None) -> None:
     repo.create_event(vault, kind="call", status="planned", start_at=ago(1), channel="call",
                       participants=[tom], title="Call with Tom")
     repo.add_commitment(vault, dev, "Ask Dev about Denver neighborhoods for Mia", None)
+
+
+def build_research_demo(vault: Vault) -> None:
+    """A small research vault built from bundled sample records (no network needed)."""
+    import json
+    from importlib import resources
+
+    from . import importer, research, research_import, resolution
+
+    repo.init_vault(vault, "Researcher")
+    research.make_research(vault)
+    sample = resources.files("ties") / "sample"
+    works = json.loads((sample / "openalex_works.json").read_text(encoding="utf-8"))
+    importer.apply(vault, "openalex", research_import.parse_openalex(works))
+    research_import.grade_import_sources(vault, "openalex:", "B", 2)
+    entity = json.loads((sample / "wikidata_Q100.json").read_text(encoding="utf-8"))
+    labels = {"Q5": "human", "Q200": "Acme Research", "Q300": "State University",
+              "Q400": "Holding Co"}
+    importer.apply(vault, "wikidata", research_import.parse_wikidata(entity, labels))
+
+    pid = research.create_project(vault, "Who is behind grid-storage research?",
+                                  "Map the authors, institutions and funders around two papers.")
+    wire = research.add_source(vault, title="Trade press profile of Jane Smith",
+                               uri="https://news.example.org/smith-profile", source_type="article",
+                               reliability="C", credibility=3, project_id=pid,
+                               excerpt="Smith, born in 1971, moved to Acme Research in 2016.")
+    reg = research.add_source(vault, title="University staff registry", source_type="dataset",
+                              reliability="A", credibility=2, project_id=pid,
+                              excerpt="Jane Smith, staff since 2012. Date of birth 1970-03-04.")
+    jane = repo.search_entities(vault, "jane smith")[0]["id"]
+    research.add_evidence_claim(vault, reg, jane, "born", value="1970-03-04",
+                                quote="Date of birth 1970-03-04")
+    research.add_evidence_claim(vault, wire, jane, "born", value="1971",
+                                quote="Smith, born in 1971")
+    research.add_evidence_claim(vault, wire, jane, "employed_by",
+                                object_ref="new:organization:Acme Research", valid_from="2016",
+                                quote="moved to Acme Research in 2016")
+    for name in ("jane smith", "raj mehta", "state university", "grid scale storage"):
+        hit = repo.search_entities(vault, name)
+        if hit:
+            research.add_to_project(vault, pid, "entity", hit[0]["id"])
+    h1 = research.add_hypothesis(vault, pid, "The papers were funded through State University")
+    h2 = research.add_hypothesis(vault, pid, "The papers were funded by Acme Research")
+    e1 = research.add_evidence_item(vault, pid, "Both papers list State University affiliations")
+    e2 = research.add_evidence_item(vault, pid, "Smith joined Acme Research after the second paper")
+    research.rate(vault, h1, e1, "C")
+    research.rate(vault, h2, e1, "N")
+    research.rate(vault, h1, e2, "N")
+    research.rate(vault, h2, e2, "I")
+    resolution.batch(vault)

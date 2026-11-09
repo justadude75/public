@@ -1,0 +1,19 @@
+{"meta": {"count": 2}, "results": [
+ {"id": "https://openalex.org/W100", "doi": "https://doi.org/10.1000/grid.1", "display_name": "Grid-scale storage economics",
+  "publication_year": 2023, "publication_date": "2023-05-02", "type": "article", "cited_by_count": 12,
+  "primary_location": {"source": {"display_name": "Energy Policy"}},
+  "authorships": [
+    {"author_position": "first", "author": {"id": "https://openalex.org/A1", "display_name": "Jane Smith", "orcid": "https://orcid.org/0000-0001-0000-0001"},
+     "institutions": [{"id": "https://openalex.org/I1", "display_name": "State University", "ror": "https://ror.org/01abcde"}]},
+    {"author_position": "last", "author": {"id": "https://openalex.org/A2", "display_name": "Raj Mehta", "orcid": null},
+     "institutions": [{"id": "https://openalex.org/I2", "display_name": "Northfield Institute", "ror": null}]}],
+  "referenced_works": ["https://openalex.org/W200", "https://openalex.org/W999"]},
+ {"id": "https://openalex.org/W200", "doi": null, "display_name": "Battery degradation in practice",
+  "publication_year": 2021, "type": "article",
+  "authorships": [
+    {"author_position": "first", "author": {"id": "https://openalex.org/A3", "display_name": "J. Smith", "orcid": null},
+     "institutions": [{"id": "https://openalex.org/I1", "display_name": "State University", "ror": "https://ror.org/01abcde"}]},
+    {"author_position": "last", "author": {"id": "https://openalex.org/A2", "display_name": "Raj Mehta", "orcid": null},
+     "institutions": []}],
+  "referenced_works": []}
+]}

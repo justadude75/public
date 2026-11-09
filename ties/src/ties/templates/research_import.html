@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Bulk research import{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Bulk import</h1><p class="muted">Pulls public records into this vault. Everything goes through the usual preview, re-import and undo.</p></div>
+{% if not network %}<div class="banner warn" style="border-radius:8px;margin-bottom:1rem">Network access is off for this vault. Turn it on in <a href="/settings">Settings</a> to fetch from these services. Only your search terms are sent.</div>{% endif %}
+<div class="grid2">
+  <section class="card"><h2>Publications (OpenAlex)</h2>
+    <p class="muted small">Works, authors (with ORCID), institutions (with ROR), authorship, affiliation and citation links.</p>
+    <form method="post" action="/research/import" class="form compact"><input type="hidden" name="kind" value="openalex">
+      <label>Search <input name="query" placeholder="e.g. grid-scale storage economics"></label>
+      <label>…or an author's ORCID <input name="orcid" placeholder="0000-0002-…"></label>
+      <label>How many works <input type="number" name="per_page" value="50" min="1" max="200"></label>
+      <button class="btn primary sm" {{ 'disabled' if not network }}>Preview</button></form></section>
+  <section class="card"><h2>Wikidata</h2>
+    <p class="muted small">One item and its employers, education, memberships, positions, family, ownership and dates, with start and end dates where recorded.</p>
+    <form method="post" action="/research/import" class="form compact"><input type="hidden" name="kind" value="wikidata">
+      <label>Item id <input name="qid" placeholder="Q42"></label>
+      <button class="btn primary sm" {{ 'disabled' if not network }}>Preview</button></form></section>
+</div>
+<p class="muted small">Also available: contact, calendar and spreadsheet files on the <a href="/import">Import</a> page.</p>
+{% endblock %}

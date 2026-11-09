@@ -428,7 +428,7 @@ def _add_claim(c, subject_id: str, predicate_id: str, value: Any = None,
          valid_from or None, valid_to or None, date_precision(valid_from or valid_to),
          confidence, status, basis, asserted_by),
     )
-    if pred["cardinality"] == "one" and status == "accepted":
+    if pred["cardinality"] == "one" and status == "accepted" and not _is_research(c):
         c.execute(
             "update claim set status='superseded', superseded_by=? where subject_id=? "
             "and predicate_id=? and status='accepted' and id<>?",
@@ -439,6 +439,12 @@ def _add_claim(c, subject_id: str, predicate_id: str, value: Any = None,
     textindex.reindex_entity(c, subject_id)
     textindex.reindex_entity(c, object_id)
     return cid
+
+
+def _is_research(c) -> bool:
+    """Research vaults keep competing claims side by side instead of superseding."""
+    row = c.execute("select value from meta where key='vault_kind'").fetchone()
+    return bool(row and row["value"] == "research")
 
 
 def add_claim(vault: Vault, subject_id: str, predicate_id: str, value: Any = None,

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Contradictions{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Contradictions</h1><p class="muted">Facts that can only have one value, recorded with different values for overlapping times. Both stay until you reject one.</p></div>
+{% if rows %}
+{% for r in rows %}
+<section class="card" style="margin-bottom:1rem">
+  <h2><a href="/e/{{ r.subject_id }}">{{ r.subject_name }}</a> · {{ r.predicate }}</h2>
+  <div class="grid2">
+    {% for side in (r.a, r.b) %}
+    <div class="side">
+      <strong>{{ side.value_text or side.object_name }}</strong>
+      {% if side.valid_from or side.valid_to %}<span class="muted small">{{ side.valid_from or '…' }} – {{ side.valid_to or '' }}</span>{% endif %}
+      <div class="small muted">{% if side.support %}{{ side.support.independent }} independent source{{ 's' if side.support.independent != 1 }}{% if side.support.best_grade %} · best {{ side.support.best_grade }}{% endif %}{% else %}no graded source{% endif %}</div>
+      <form method="post" action="/claim/{{ side.id }}/retract"><input type="hidden" name="back" value="/contradictions"><button class="btn sm">Reject this one</button></form>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endfor %}
+{% else %}<section class="card"><p class="muted">No contradictions found.</p></section>{% endif %}
+{% endblock %}

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "macros.html" import picker, event_row %}
+{% block title %}{{ d.project.title }}{% endblock %}
+{% block content %}
+{% set p = d.project %}
+<div class="page-head">
+  <div><h1>{{ p.title }}</h1>{% if p.description %}<p class="muted">{{ p.description }}</p>{% endif %}</div>
+  <div class="actions">
+    <a class="btn primary" href="/projects/{{ p.id }}/ach">Hypotheses ({{ d.hypotheses | length }})</a>
+    <a class="btn" href="/sources?project={{ p.id }}">Sources</a>
+    <details class="menu"><summary class="btn">Export ▾</summary><div class="menu-body">
+      {% for f, label in [('graphml', 'GraphML (yEd, Gephi)'), ('gexf', 'GEXF (Gephi)'), ('csv', 'CSV nodes + edges'), ('ftm', 'Follow the Money JSON')] %}
+      <a href="/export/graph?format={{ f }}&project={{ p.id }}">{{ label }}</a>{% endfor %}
+    </div></details>
+  </div>
+</div>
+{% if contradictions %}<div class="banner err" style="border-radius:8px;margin-bottom:1rem">{{ contradictions | length }} contradiction{{ 's' if contradictions | length != 1 }} among this project's entities. <a href="/contradictions">Review</a></div>{% endif %}
+<div class="grid2">
+  <div>
+    <section class="card">
+      <h2>Entities ({{ d.entities | length }})</h2>
+      {% if d.entities %}
+      <ul class="plain">{% for e in d.entities %}
+        <li class="row"><span><a href="/e/{{ e.id }}">{{ e.display_name }}</a> <span class="badge muted">{{ e.type_id }}</span></span>
+          <form method="post" action="/projects/{{ p.id }}/add"><input type="hidden" name="remove_kind" value="entity"><input type="hidden" name="remove_id" value="{{ e.id }}"><button class="linkish" title="Remove from project">×</button></form></li>
+      {% endfor %}</ul>
+      {% endif %}
+      <form method="post" action="/projects/{{ p.id }}/add" class="inline">
+        <span style="flex:1">{{ picker('entity', type='', create='person,organization,place,document', placeholder='Add an entity…') }}</span>
+        <button class="btn sm">Add</button>
+      </form>
+      <p class="muted small"><a href="/graph?center={{ d.entities[0].id if d.entities else '' }}">Open in graph</a></p>
+    </section>
+  </div>
+  <div>
+    <section class="card">
+      <h2>Sources ({{ d.sources | length }})</h2>
+      {% if d.sources %}<ul class="plain small">{% for s in d.sources %}
+        <li><a href="/sources/{{ s.id }}">{{ s.title }}</a> {% if s.reliability or s.credibility %}<span class="badge">{{ s.reliability or '?' }}{{ s.credibility or '?' }}</span>{% endif %} <span class="muted">{{ s.published_at or '' }}</span></li>
+      {% endfor %}</ul>{% else %}<p class="muted">Add sources from the <a href="/sources">source library</a>.</p>{% endif %}
+    </section>
+    <section class="card">
+      <h2>Timeline</h2>
+      {% if d.events %}<ul class="events">{% for ev in d.events %}{{ event_row(ev) }}{% endfor %}</ul>{% else %}<p class="muted">No events involving these entities.</p>{% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

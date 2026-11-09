@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Projects{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Projects</h1>
+  <div class="actions"><a class="btn" href="/research/import">Bulk import</a><a class="btn" href="/resolve">Resolve duplicates</a></div></div>
+<div class="grid2">
+  <section class="card">
+    {% if projects %}
+    <ul class="plain">{% for p in projects %}
+      <li><a href="/projects/{{ p.id }}"><strong>{{ p.title }}</strong></a>
+        <div class="muted small">{{ p.counts.get('entity', 0) }} entities · {{ p.counts.get('source', 0) }} sources · {{ p.hypotheses }} hypotheses</div>
+        {% if p.description %}<div class="small">{{ p.description | truncate(160) }}</div>{% endif %}</li>
+    {% endfor %}</ul>
+    {% else %}<p class="muted">No projects yet. A project collects the entities, sources and hypotheses for one line of research. Entities are shared across projects.</p>{% endif %}
+  </section>
+  <section class="card">
+    <h2>New project</h2>
+    <form method="post" action="/projects" class="form compact">
+      <label>Title <input name="title" required></label>
+      <label>Question or scope <textarea name="description" rows="3"></textarea></label>
+      <button class="btn primary sm">Create</button>
+    </form>
+  </section>
+</div>
+{% endblock %}

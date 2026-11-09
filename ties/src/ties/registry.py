@@ -56,10 +56,28 @@ PREDICATES = [
     # edges: anything
     ("attended", "Attended", "Attendee", [P, O], "entity", [E], "many", 0, 0, None, "normal", 40),
     ("shares_connector", "Shares a connector with", None, [P], "entity", [P], "many", 0, 1, None, "normal", 41),
+    ("authored", "Author of", "Author", [P, O], "entity", ["document"], "many", 0, 0, None, "normal", 42),
+    ("cites", "Cites", "Cited by", ["document"], "entity", ["document"], "many", 0, 0, None, "normal", 43),
+    ("affiliated_with", "Affiliated with", "Affiliate", [P], "entity", [O], "many", 1, 0, None, "normal", 44),
+    ("position_held", "Position", "Held by", [P], "entity", [O, "topic"], "many", 1, 0, None, "normal", 45),
+    ("owns", "Owns", "Owned by", [P, O], "entity", [O, "document", PL], "many", 1, 0, None, "normal", 46),
+    ("director_of", "Director of", "Director", [P], "entity", [O], "many", 1, 0, None, "normal", 47),
+    ("about", "About", "Subject of", ["document", E], "entity", [ANY], "many", 0, 0, None, "normal", 48),
+    ("published", "Published", None, ["document"], "date", None, "one", 0, 0, None, "normal", 50),
+    ("instance_of", "Kind", None, [ANY], "string", None, "many", 0, 0, None, "normal", 51),
+    ("born", "Born", None, [P], "date", None, "one", 0, 0, None, "normal", 52),
+    ("died", "Died", None, [P], "date", None, "one", 0, 0, None, "normal", 53),
+    ("founded", "Founded", None, [O], "date", None, "one", 0, 0, None, "normal", 54),
     ("related_to", "Related to", None, [ANY], "entity", [ANY], "many", 1, 1, None, "normal", 98),
 ]
 
 BASES = ["observed", "told", "heard", "public", "inferred"]
+RELIABILITY = {"A": "Completely reliable", "B": "Usually reliable", "C": "Fairly reliable",
+               "D": "Not usually reliable", "E": "Unreliable", "F": "Reliability cannot be judged"}
+CREDIBILITY = {1: "Confirmed by other sources", 2: "Probably true", 3: "Possibly true",
+               4: "Doubtful", 5: "Improbable", 6: "Truth cannot be judged"}
+SOURCE_TYPES = ["paper", "article", "filing", "court", "dataset", "web", "interview", "book",
+                "report", "other"]
 TIERS = ["inner", "close", "active", "extended", "wider"]
 TIER_CADENCE = {"inner": 14, "close": 30, "active": 60, "extended": 120, "wider": 365}
 # Rule-based inference defaults (plan section 14). Stored per vault in meta "inference_rules".

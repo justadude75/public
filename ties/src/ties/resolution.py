@@ -97,8 +97,12 @@ def candidates(vault: Vault, min_score: float = 0.55, limit: int = 100) -> list[
                 continue
             score, reasons = score_pair(a, b)
             if score >= min_score:
-                # keep the better-connected one first
-                if (b["engagement"] == "contact") and a["engagement"] != "contact":
+                # offer the richer record as the one to keep: tracked contact, more
+                # identifiers, more names, then the fuller display name
+                def richness(e):
+                    return (e["engagement"] == "contact", len(e["idents"]), len(e["names"]),
+                            len(e["display_name"]))
+                if richness(b) > richness(a):
                     a, b = b, a
                 out.append({"a": {"id": a["id"], "display_name": a["display_name"],
                                   "context": _context(vault, a["id"], a["type_id"])},
@@ -269,3 +273,65 @@ def merges(vault: Vault, limit: int = 30) -> list[dict]:
         r["keep"] = vault.one("select id, display_name from entity where id=?", (p["keep"],))
         r["drop"] = vault.one("select id, display_name from entity where id=?", (p["drop"],))
     return rows
+
+
+# ── batch resolution for research vaults ────────────────────────────────────
+
+# OpenAlex author ids are not used: OpenAlex itself sometimes splits one person into several.
+STRONG_SCHEMES = ("orcid", "wikidata", "ror", "doi", "lei")
+
+
+def _neighbors(vault: Vault) -> dict[str, set[str]]:
+    out: dict[str, set[str]] = defaultdict(set)
+    for r in vault.all("select subject_id, object_id from claim where object_id is not null "
+                       "and status='accepted'"):
+        out[r["subject_id"]].add(r["object_id"])
+        out[r["object_id"]].add(r["subject_id"])
+    for r in vault.all("select p1.entity_id as a, p2.entity_id as b from participation p1 join "
+                       "participation p2 on p1.event_id=p2.event_id and p1.entity_id<>p2.entity_id"):
+        out[r["a"]].add(r["b"])
+    return out
+
+
+def batch(vault: Vault, auto_threshold: float | None = None, min_score: float = 0.5) -> dict:
+    """Score candidate pairs with names, identifiers and shared neighbours.
+
+    Shared neighbours matter most in research data: two "J. Smith" records who share
+    co-authors or employers are likely one person. Two records with *different*
+    values for a strong identifier (ORCID, Wikidata id...) are never merged.
+    Pairs at or above `auto_threshold` are merged automatically (never tracked contacts).
+    """
+    neigh = _neighbors(vault)
+    idents: dict[str, dict[str, set]] = defaultdict(lambda: defaultdict(set))
+    for r in vault.all("select entity_id, scheme, value from identifier"):
+        idents[r["entity_id"]][r["scheme"]].add(r["value"])
+    scored = []
+    for cand in candidates(vault, min_score=min_score * 0.8, limit=5000):
+        a, b = cand["a"]["id"], cand["b"]["id"]
+        conflict = [s for s in STRONG_SCHEMES
+                    if idents[a].get(s) and idents[b].get(s) and not (idents[a][s] & idents[b][s])]
+        if conflict:
+            continue
+        na, nb = neigh.get(a, set()) - {b}, neigh.get(b, set()) - {a}
+        jacc = len(na & nb) / len(na | nb) if (na | nb) else 0.0
+        score = min(1.0, cand["score"] + 0.35 * jacc)
+        reasons = list(cand["reasons"]) + ([f"{len(na & nb)} shared connections"] if na & nb else [])
+        if score >= min_score:
+            scored.append({**cand, "score": round(score, 3), "reasons": reasons, "shared": len(na & nb)})
+    scored.sort(key=lambda x: -x["score"])
+    merged = []
+    if auto_threshold is not None:
+        done: set[str] = set()
+        for s in scored:
+            a, b = s["a"]["id"], s["b"]["id"]
+            if s["score"] < auto_threshold or a in done or b in done:
+                continue
+            eng = {r["engagement"] for r in vault.all(
+                "select engagement from entity where id in (?,?)", (a, b))}
+            if "contact" in eng or "ego" in eng:
+                continue
+            did = merge(vault, a, b, rationale=f"batch score {s['score']}: {', '.join(s['reasons'])}")
+            merged.append({"decision": did, "keep": s["a"], "drop": s["b"], "score": s["score"]})
+            done |= {a, b}
+    return {"candidates": [s for s in scored if not any(
+        m["drop"]["id"] in (s["a"]["id"], s["b"]["id"]) for m in merged)], "merged": merged}

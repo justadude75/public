@@ -1,10 +1,11 @@
 # Build status
 
-What is built against the roadmap in `docs/personal-graph-plan.md` (section 13).
+Built against the roadmap in `docs/personal-graph-plan.md` (section 13). All phases are done.
+The test suite has 85 tests (`pytest`).
 
 Decisions in force:
-- Markdown import writes a `gid:` line into note frontmatter (on by default).
-- The generated `_graph/` folder is off.
+- Markdown import writes a `gid:` line into note frontmatter (on by default; Settings).
+- The generated `_graph/` folder is off (not built).
 - Inference rules use the defaults from section 14: shared small events, shared connector, and overlapping time at a small organization are on; same school and year is off.
 
 | Phase | Item | Status |
@@ -23,4 +24,11 @@ Decisions in force:
 | 2 | Pre-meeting briefs; graph explorer | done |
 | 3 | Goals; warm paths; brokerage; asks and offers; weekly review | done |
 | 3 | Local MCP server; privacy gateway | done |
-| 4 | Research vault: sources, reliability grades, projects, as-of queries, contradictions, hypotheses, exports, bulk importers, batch ER | todo |
+| 4 | Research vault: sources, reliability grades, projects, as-of queries, contradictions, hypotheses, exports, bulk importers, batch ER | done |
+| 4 | Links between a personal and a research vault (read-only, nothing copied) | done |
+
+Known limits:
+- The OpenAlex and Wikidata fetchers could not be run against the live services in the build environment (network blocked). Their parsers are tested against saved responses in the documented formats.
+- The local-model and outside-model paths are tested with stand-in models, not a real model.
+- The graph view uses Cytoscape for every graph; a WebGL renderer for very large research graphs (tens of thousands of nodes) is not built.
+- Mobile capture relies on Markdown files or the browser; there is no phone app.

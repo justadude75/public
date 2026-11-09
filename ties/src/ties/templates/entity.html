@@ -73,7 +73,7 @@
           {% if f.valid_from or f.valid_to %}<span class="muted small">{{ f.valid_from or '…' }} – {{ f.valid_to or 'now' }}</span>{% endif %}
           {% if f.qual.note %}<span class="muted small">· {{ f.qual.note }}</span>{% endif %}
         </span>
-        <span class="meta">{{ basis_badge(f.basis) }}{% if f.confidence < 1 %}<span class="badge muted">{{ f.confidence | pct }}%</span>{% endif %}
+        <span class="meta">{% set sp = support.get(f.id) %}{% if sp and sp.best_grade %}<span class="badge grade" title="{{ sp.independent }} independent source(s), best grade {{ sp.best_grade }}">{{ sp.independent }}× {{ sp.best_grade }}</span>{% endif %}{{ basis_badge(f.basis) }}{% if f.confidence < 1 %}<span class="badge muted">{{ f.confidence | pct }}%</span>{% endif %}
           <details class="menu"><summary>⋯</summary>
             <div class="menu-body">
               <span class="muted small">recorded {{ f.recorded_at | day }}</span>
@@ -115,7 +115,7 @@
         <span class="v"><a href="/e/{{ r.other_id }}">{{ r.other_name }}</a>
           {% if r.valid_from or r.valid_to %}<span class="muted small">{{ r.valid_from or '…' }} – {{ r.valid_to or 'now' }}</span>{% endif %}
           {% if r.qual.note %}<span class="muted small">· {{ r.qual.note }}</span>{% endif %}</span>
-        <span class="meta">{{ basis_badge(r.basis) }}
+        <span class="meta">{% set sp = support.get(r.id) %}{% if sp and sp.best_grade %}<span class="badge grade" title="{{ sp.independent }} independent source(s), best grade {{ sp.best_grade }}">{{ sp.independent }}× {{ sp.best_grade }}</span>{% endif %}{{ basis_badge(r.basis) }}
           <details class="menu"><summary>⋯</summary>
             <div class="menu-body">
               <form method="post" action="/claim/{{ r.id }}/end"><input type="hidden" name="back" value="{{ here }}"><input type="date" name="valid_to"><button class="btn sm">Ended</button></form>
@@ -149,6 +149,45 @@
       </form>
     </details>
   </section>
+
+  <section class="card" id="asof">
+    <h2>As of</h2>
+    <form method="get" action="{{ here }}#asof" class="inline">
+      <label class="inline-label">Known by <input type="date" name="known_at" value="{{ asof.known_at if asof else '' }}"></label>
+      <label class="inline-label">True on <input type="date" name="valid_at" value="{{ asof.valid_at if asof else '' }}"></label>
+      <button class="btn sm">Show</button>
+    </form>
+    <p class="muted small">“Known by” shows what you had recorded on that date; “True on” shows what was true in the world on that date.</p>
+    {% if asof %}
+    {% if asof.rows %}<ul class="facts">{% for r in asof.rows %}
+      <li><span class="k">{{ r.label }}</span><span class="v">{% if r.other_id %}<a href="/e/{{ r.other_id }}">{{ r.other_name }}</a>{% else %}{{ r.value_text }}{% endif %}
+        {% if r.valid_from or r.valid_to %}<span class="muted small">{{ r.valid_from or '…' }} – {{ r.valid_to or 'now' }}</span>{% endif %}</span>
+        <span class="meta"><span class="badge muted">recorded {{ r.recorded_at | day }}</span></span></li>{% endfor %}</ul>
+    {% else %}<p class="muted">Nothing for that date.</p>{% endif %}
+    {% endif %}
+  </section>
+
+  {% for l in linked %}
+  <section class="card">
+    <h2>In your other vault <span class="muted small">{{ l.link.other_vault.split('/')[-1] }}</span></h2>
+    {% if l.available %}
+    <ul class="facts">{% for f in l.facts %}<li><span class="k">{{ f.predicate_label }}</span><span class="v">{{ f.value_text }}</span><span></span></li>{% endfor %}
+      {% for r in l.relations %}<li><span class="k">{{ r.label }}</span><span class="v">{{ r.other_name }}</span><span></span></li>{% endfor %}</ul>
+    <p class="muted small">Read-only. Nothing is copied into this vault.</p>
+    {% else %}<p class="muted small">Linked to “{{ l.link.other_name }}”, but that vault can't be opened right now.</p>{% endif %}
+  </section>
+  {% endfor %}
+
+  {% if projects %}
+  <section class="card">
+    <h2>Projects</h2>
+    <form method="post" class="inline" onsubmit="this.action='/projects/' + this.project.value + '/add'">
+      <input type="hidden" name="entity" value="{{ e.id }}"><input type="hidden" name="back" value="{{ here }}">
+      <select name="project">{% for p in projects %}<option value="{{ p.id }}">{{ p.title }}</option>{% endfor %}</select>
+      <button class="btn sm">Add to project</button>
+    </form>
+  </section>
+  {% endif %}
 
   <section class="card" id="inferences">
     <h2>Inferences <span class="muted small">— hunches and suggestions, not facts</span></h2>
