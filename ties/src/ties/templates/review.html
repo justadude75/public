@@ -81,6 +81,18 @@
 </section>
 {% endif %}
 
+{% if recent_merges %}
+<section class="card">
+  <h2>Recent merges</h2>
+  <ul class="plain small">
+    {% for m in recent_merges %}
+    <li class="row"><span>{{ m.drop.display_name if m.drop else '?' }} → <a href="/e/{{ m.keep.id }}">{{ m.keep.display_name }}</a> <span class="muted">{{ m.decided_at }}</span></span>
+      {% if not m.reverted_by %}<form method="post" action="/merge/{{ m.id }}/undo"><button class="btn sm">Undo</button></form>{% else %}<span class="badge muted">undone</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
 {{ group("Suggested by rules", groups.rule, "Patterns found in your own data. Turn rules on or off in Settings.") }}
 {{ group("Extracted by your local model", groups.model, "Read from your notes by the model. Check each one.") }}
 {{ group("Other proposals", groups.other, "Proposed by imports or agents.") }}

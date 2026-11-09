@@ -47,6 +47,18 @@
   </section>
 
   <section class="card">
+    <h2>Today rules</h2>
+    <form method="post" action="/settings/triggers" class="form compact">
+      <div class="row3">
+        <label>Brief before meetings (days) <input type="number" min="0" name="brief_days" value="{{ trig.brief_days }}"></label>
+        <label>Ask for notes after (days) <input type="number" min="0" name="debrief_days" value="{{ trig.debrief_days }}"></label>
+        <label>Show job and city changes for (days) <input type="number" min="0" name="fact_change_days" value="{{ trig.fact_change_days }}"></label>
+      </div>
+      <button class="btn sm primary">Save</button>
+    </form>
+  </section>
+
+  <section class="card">
     <h2>Outside model (optional, off)</h2>
     <p class="muted small">Used only for network-strategy questions, and only through the privacy gateway: names, contact details, notes and sensitive facts never leave; you see the exact payload before anything is sent.</p>
     <form method="post" action="/settings" class="form compact">

@@ -32,6 +32,11 @@
         <div class="due-actions">
           <a class="btn sm primary" href="/log?with={{ s.entity_id }}">Log</a>
           <a class="btn sm" href="/log?status=planned&with={{ s.entity_id }}">Schedule</a>
+          <form method="post" action="/outreach/due/{{ s.entity_id }}" class="snooze" title="Snooze">
+            <input type="hidden" name="status" value="snoozed"><input type="hidden" name="back" value="/">
+            <button class="btn sm" name="days" value="7" title="Snooze a week">1w</button>
+            <button class="btn sm" name="days" value="30" title="Snooze a month">1m</button>
+          </form>
         </div>
       </li>
       {% endfor %}
@@ -39,6 +44,7 @@
     {% else %}
     <p class="muted">Nobody is due. Nice.</p>
     {% endif %}
+    {% if t.n_snoozed %}<p class="muted small">{{ t.n_snoozed }} snoozed.</p>{% endif %}
     {% if t.soon %}
     <h3>Coming due this week</h3>
     <ul class="plain">
@@ -68,6 +74,44 @@
 </div>
 
 <div>
+  {% if t.briefs %}
+  <section class="card">
+    <h2>Prepare</h2>
+    <ul class="plain">
+      {% for ev in t.briefs %}
+      <li class="row"><span><a href="/event/{{ ev.id }}">{{ ev.title }}</a> <span class="muted">{{ ev.start_at | rel }}</span></span>
+        <a class="btn sm primary" href="/event/{{ ev.id }}/brief">Read brief</a></li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if t.debriefs %}
+  <section class="card">
+    <h2>Add notes while they're fresh</h2>
+    <ul class="plain">
+      {% for ev in t.debriefs %}
+      <li class="row"><span><a href="/event/{{ ev.id }}">{{ ev.title }}</a> <span class="muted">{{ ev.start_at | rel }}</span></span>
+        <span class="inline-forms"><a class="btn sm primary" href="/event/{{ ev.id }}/debrief">Debrief</a>
+        <form method="post" action="/outreach/debrief/{{ ev.id }}"><input type="hidden" name="status" value="dismissed"><input type="hidden" name="back" value="/"><button class="btn sm">Skip</button></form></span></li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if t.fact_changes %}
+  <section class="card">
+    <h2>News in your network</h2>
+    <ul class="plain">
+      {% for f in t.fact_changes %}
+      <li class="row"><span><a href="/e/{{ f.subject_id }}">{{ f.text }}</a> <span class="muted small">noted {{ f.day | rel }}</span></span>
+        <span class="inline-forms"><a class="btn sm primary" href="/log?with={{ f.subject_id }}&kind=message">Reach out</a>
+        <form method="post" action="/outreach/fact_change/{{ f.id }}"><input type="hidden" name="status" value="dismissed"><input type="hidden" name="back" value="/"><button class="btn sm">Dismiss</button></form></span></li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
   {% if t.unlogged %}
   <section class="card attention">
     <h2>Did these happen?</h2>

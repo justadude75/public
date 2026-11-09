@@ -263,3 +263,20 @@ ul.review input[type=checkbox] { width: auto; }
 [data-rows] { display: flex; flex-direction: column; gap: .45rem; }
 @media (max-width: 900px) { .drow, [data-rows] .drow { grid-template-columns: 1fr !important; padding-bottom: .6rem; border-bottom: 1px dashed var(--line); } }
 .facts .meta form { display: inline; }
+
+/* phase 2 */
+#cy { height: 68vh; min-height: 420px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+.graph-controls { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; margin-bottom: .6rem; }
+.graph-controls label { flex-direction: row; align-items: center; gap: .3rem; }
+.graph-controls select { width: auto; }
+.legend { margin-left: auto; font-size: .8rem; color: var(--muted); display: flex; gap: .35rem; align-items: center; }
+.lg { display: inline-block; width: .7rem; height: .7rem; border-radius: 50%; }
+.lg.person { background: var(--accent); } .lg.organization { background: var(--theirs); border-radius: 2px; }
+.lg.place { background: var(--warn); transform: rotate(45deg); border-radius: 1px; } .lg.due { border: 2px solid var(--late); }
+.inline-label { flex-direction: row; align-items: center; gap: .4rem; min-width: 16rem; }
+.inline-label .ac { flex: 1; }
+ol.paths { margin: 0; padding-left: 1.2rem; } ol.paths li { padding: .35rem 0; }
+.brief { margin-bottom: 1rem; }
+.snooze { display: inline-flex; gap: .2rem; }
+.snooze button { font-size: .75rem; padding: .1rem .4rem; }
+@media print { .top, .foot, .banner, .actions { display: none !important; } .card { break-inside: avoid; } }

@@ -1,0 +1,23 @@
+BEGIN:VCARD
+VERSION:3.0
+UID:abc-123
+FN:Sarah Chen
+N:Chen;Sarah;;;
+NICKNAME:Sare
+EMAIL;TYPE=WORK:sarah@example.com
+TEL;TYPE=CELL:+1 (415) 555-0100
+ORG:Paybridge;Partnerships
+TITLE:Head of Partnerships
+BDAY:1990-04-12
+ADR;TYPE=HOME:;;1 Main St;Oakland;CA;94607;USA
+URL:https://example.com/sarah
+CATEGORIES:Work,Climate
+NOTE:Met at the payments meetup\, 2019.
+END:VCARD
+BEGIN:VCARD
+VERSION:3.0
+FN:Raj Mehta
+EMAIL:raj@example.com
+ORG:Northfield Ventures
+BDAY:--0705
+END:VCARD

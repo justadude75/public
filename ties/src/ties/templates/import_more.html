@@ -1,0 +1,31 @@
+<section class="card">
+  <h2>Contacts file (vCard)</h2>
+  <p class="muted small">Exported from your phone, Google Contacts, Apple Contacts or Outlook (<code>.vcf</code>). People come in as acquaintances unless you tick the box.</p>
+  <form method="post" action="/import/vcard" enctype="multipart/form-data" class="inline">
+    <input type="file" name="file" accept=".vcf,text/vcard" required>
+    <label class="check-label"><input type="checkbox" name="opt-contacts" value="1"> track them as contacts</label>
+    <button class="btn primary sm">Preview</button>
+  </form>
+</section>
+<section class="card">
+  <h2>Calendar (iCalendar)</h2>
+  <p class="muted small">An <code>.ics</code> export. Past meetings are logged as interactions, future ones as plans. Events with only you are skipped; meetings with more than 8 people don't count as being in touch. Add your own email to your profile so you aren't listed as an attendee.</p>
+  <form method="post" action="/import/ical" enctype="multipart/form-data" class="inline">
+    <input type="file" name="file" accept=".ics,text/calendar" required>
+    <label class="check-label"><input type="checkbox" name="opt-all" value="1"> include events with no one else</label>
+    <button class="btn primary sm">Preview</button>
+  </form>
+</section>
+<section class="card">
+  <h2>Spreadsheet (CSV)</h2>
+  <p class="muted small">Any CSV with a header row, including LinkedIn's Connections export and Google Contacts CSV. Columns are matched automatically; you can adjust the matching on the preview.</p>
+  <form method="post" action="/import/csv" enctype="multipart/form-data" class="inline">
+    <input type="file" name="file" accept=".csv,text/csv" required>
+    <label class="check-label"><input type="checkbox" name="opt-contacts" value="1"> track them as contacts</label>
+    <button class="btn primary sm">Preview</button>
+  </form>
+</section>
+<section class="card">
+  <h2>Restore from a JSON export</h2>
+  <p class="muted small">Restores into a brand-new vault from the command line: <code>ties --vault new.vault restore export.json</code>.</p>
+</section>

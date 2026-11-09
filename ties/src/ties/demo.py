@@ -96,6 +96,15 @@ def build_demo(vault: Vault, today: date | None = None) -> None:
         follow_ups=[{"text": "Share the partnerships playbook", "due": ahead(10), "owner": "me"}])
     log([alex], 400, "event", title="Conference panel", by="them")
 
+    log([raj, dev], 150, "meal", title="Climate founders dinner", by="them")
+    log([raj, dev], 60, "event", title="Grid storage roundtable", by="them")
+    repo.add_claim(vault, voltgrid, "size", value="14")
+    repo.add_claim(vault, priya, "employed_by", object_ref=voltgrid, valid_from="2025")
+    repo.add_claim(vault, raj, "seeking", value="climate founders raising a Series A")
+    repo.add_claim(vault, priya, "seeking", value="Series A investors for Voltgrid")
+    repo.add_claim(vault, sarah, "offering", value="payments partnerships advice")
+    repo.add_claim(vault, tom, "seeking", value="partnerships advice for a new payments product")
+
     repo.create_event(vault, kind="meal", status="planned", start_at=ahead(4) + "T19:00",
                       participants=[raj, mia], title="Dinner with Raj & Mia")
     repo.create_event(vault, kind="call", status="planned", start_at=ago(1), channel="call",

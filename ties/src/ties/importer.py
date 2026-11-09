@@ -248,6 +248,9 @@ class _Applier:
         c = self.c
         names = {r["name_norm"] for r in c.execute(
             "select name_norm from entity_name where entity_id=?", (eid,))}
+        if rec.name and normalize_name(rec.name) not in names:
+            _add_name(c, eid, rec.name, "alias")
+            names.add(normalize_name(rec.name))
         for alias in rec.aliases:
             if alias and normalize_name(alias) not in names:
                 _add_name(c, eid, alias, "alias")

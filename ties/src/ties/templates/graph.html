@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% from "macros.html" import picker %}
+{% block title %}Graph{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Graph</h1>
+  <form class="filters" method="get" action="/graph">
+    <label class="inline-label">Center {{ picker('center', type='', create='', placeholder='Anyone…', preset=([{'id': center.id, 'name': center.display_name}] if center else [])) }}</label>
+    <label class="inline-label">Warm path to {{ picker('to', type='person', create='', placeholder='Person…', preset=([{'id': to.id, 'name': to.display_name}] if to else [])) }}</label>
+    <button class="btn">Show</button>
+  </form>
+</div>
+{% if paths is not none %}
+<section class="card" style="margin-bottom:1rem">
+  <h2>Ways to reach {{ to.display_name }}</h2>
+  {% if paths %}
+  <ol class="paths">
+    {% for p in paths %}
+    <li><span class="badge">{{ (p.strength * 100) | round(1) }}%</span>
+      You → {% for h in p.hops %}<a href="/e/{{ h.id }}" data-node="{{ h.id }}">{{ h.name }}</a> <span class="muted small">({{ h.via }}{{ ', suggested' if h.inferred }})</span>{{ ' → ' if not loop.last }}{% endfor %}
+      {% if p.ask %}<div class="muted small">Ask {{ p.ask }} first.</div>{% endif %}</li>
+    {% endfor %}
+  </ol>
+  {% else %}<p class="muted">No path found yet. Add how people know each other to connect them.</p>{% endif %}
+</section>
+{% endif %}
+<section class="card graph-card">
+  <div class="graph-controls">
+    <label class="check-label"><input type="checkbox" id="g-inferred" checked> suggestions (dashed)</label>
+    <label class="check-label"><input type="checkbox" id="g-together" checked> met together</label>
+    <label class="check-label"><input type="checkbox" id="g-me"> include me</label>
+    <label class="check-label"><input type="checkbox" id="g-places" checked> places</label>
+    <label>Depth <select id="g-depth"><option>1</option><option selected>2</option><option>3</option></select></label>
+    <span class="legend"><i class="lg person"></i>person <i class="lg organization"></i>organization <i class="lg place"></i>place <i class="lg due"></i>due</span>
+  </div>
+  <div id="cy" data-center="{{ center.id if center else '' }}" data-path="{{ (paths[0].hops | map(attribute='id') | join(',')) if paths else '' }}"></div>
+  <p class="muted small" id="g-info">Click a node to see it; double-click to center on it.</p>
+</section>
+<script src="/static/vendor/cytoscape.min.js"></script>
+<script src="/static/graph.js"></script>
+{% endblock %}

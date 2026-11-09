@@ -121,6 +121,53 @@ def cmd_export(args) -> None:
         print(data)
 
 
+def cmd_restore(args) -> None:
+    from .importers_std import restore
+
+    path = Path(args.vault).expanduser()
+    if path.exists():
+        sys.exit(f"{path} already exists. Restore into a new vault path.")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    passphrase = _passphrase(path, confirm=True) if args.encrypt else None
+    vault = Vault(path, passphrase)
+    repo.prepare(vault)
+    data = json.loads(Path(args.file).read_text(encoding="utf-8"))
+    try:
+        counts = restore(vault, data)
+    except ValueError as exc:
+        vault.close()
+        path.unlink(missing_ok=True)
+        sys.exit(str(exc))
+    vault.close()
+    print(f"Restored {sum(counts.values())} rows into {path}")
+
+
+def cmd_import(args) -> None:
+    from . import importer, importers_std, markdown
+
+    vault = open_vault(Path(args.vault).expanduser())
+    if args.kind == "markdown":
+        report, info = markdown.import_folder(vault, args.source, dry_run=not args.apply)
+    else:
+        text = Path(args.source).read_text(encoding="utf-8", errors="replace")
+        if args.kind == "vcard":
+            records = importers_std.parse_vcard(text, as_contacts=args.contacts)
+        elif args.kind == "ical":
+            records = importers_std.parse_ical(text, importers_std.my_emails(vault))
+        else:
+            records, mapping, _ = importers_std.parse_csv(text, as_contacts=args.contacts)
+            print("Column matching:", json.dumps(mapping))
+        report = importer.apply(vault, args.kind, records, dry_run=not args.apply,
+                                label=args.source)
+    print(f"{'Applied' if args.apply else 'Preview (nothing saved; add --apply)'}: "
+          f"{len(report.created)} new, {len(report.matched)} matched, "
+          f"{len(report.claims_added)} facts, {len(report.events_added)} events, "
+          f"{len(report.follow_ups_added)} follow-ups, {len(report.conflicts)} conflicts, "
+          f"{len(report.claims_retired)} removed")
+    for w in report.warnings[:20]:
+        print("  note:", w)
+
+
 def cmd_backup(args) -> None:
     vault = open_vault(Path(args.vault).expanduser())
     dest = vault.backup(Path(args.dest).expanduser())
@@ -154,7 +201,19 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("dest", help="file or folder to copy to")
     p.set_defaults(func=cmd_backup)
 
-    for name in ("serve", "demo", "export", "backup", "init"):
+    p = sub.add_parser("restore", help="restore a JSON export into a new vault")
+    p.add_argument("file")
+    p.add_argument("--encrypt", action="store_true")
+    p.set_defaults(func=cmd_restore)
+
+    p = sub.add_parser("import", help="import notes, contacts, a calendar or a CSV")
+    p.add_argument("kind", choices=["markdown", "vcard", "ical", "csv"])
+    p.add_argument("source", help="folder (markdown) or file")
+    p.add_argument("--apply", action="store_true", help="save (default is a preview)")
+    p.add_argument("--contacts", action="store_true", help="track imported people as contacts")
+    p.set_defaults(func=cmd_import)
+
+    for name in ("serve", "demo", "export", "backup", "init", "restore", "import"):
         sub.choices[name].add_argument("--vault", default=argparse.SUPPRESS,
                                        help="vault file")
     args = parser.parse_args(argv)

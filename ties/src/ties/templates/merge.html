@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Compare{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Same {{ 'person' if ents[0].e.type_id == 'person' else ents[0].e.type_id }}?</h1>
+<p class="muted">Merging keeps everything from both: facts, relationships, events, follow-ups, links and names. You can undo it later.</p></div>
+<div class="grid2">
+  {% for x in ents %}
+  <section class="card">
+    <h2><a href="/e/{{ x.e.id }}">{{ x.e.display_name }}</a> <span class="badge muted">{{ x.e.engagement or x.e.type_id }}</span></h2>
+    <p class="muted small">Also: {{ x.names | join(', ') }} · {{ x.events }} event{{ 's' if x.events != 1 }}</p>
+    <ul class="facts">
+      {% for i in x.idents %}<li><span class="k">{{ i.scheme }}</span><span class="v">{{ i.value }}</span><span></span></li>{% endfor %}
+      {% for f in x.facts %}<li><span class="k">{{ f.predicate_label }}</span><span class="v">{{ f.value_text }}</span><span></span></li>{% endfor %}
+      {% for r in x.rels %}<li><span class="k">{{ r.label }}</span><span class="v">{{ r.other_name }}</span><span></span></li>{% endfor %}
+    </ul>
+    <form method="post" action="/merge" style="margin-top:.8rem">
+      <input type="hidden" name="keep" value="{{ x.e.id }}">
+      <input type="hidden" name="drop" value="{{ ents[1 - loop.index0].e.id }}">
+      <button class="btn primary">Merge, keeping “{{ x.e.display_name }}” as the name</button>
+    </form>
+  </section>
+  {% endfor %}
+</div>
+<form method="post" action="/not-same" style="margin-top:1rem"><input type="hidden" name="a" value="{{ ents[0].e.id }}"><input type="hidden" name="b" value="{{ ents[1].e.id }}"><button class="btn">They're different — don't suggest again</button></form>
+{% endblock %}

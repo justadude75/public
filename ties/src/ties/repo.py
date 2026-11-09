@@ -982,7 +982,7 @@ def list_entities(vault: Vault, type_id: str | None = None, engagement: str | No
 def export_all(vault: Vault) -> dict:
     tables = [r["name"] for r in vault.all(
         "select name from sqlite_master where type='table' and name not like 'sqlite_%' "
-        "order by name")]
+        "and name not like '%_fts%' and name not in ('embedding') order by name")]
     return {
         "format": "ties-export",
         "format_version": 1,

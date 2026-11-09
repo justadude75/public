@@ -12,5 +12,21 @@
     <button class="btn primary" {{ 'disabled' if not report.changes }}>Apply {{ report.changes }} change{{ 's' if report.changes != 1 }}</button>
   </form>
 </div>
+{% if mapping %}
+<section class="card" style="margin-bottom:1rem">
+  <h2>Column matching</h2>
+  <form method="post" action="{{ action }}" class="form compact">
+    {% for k, v in hidden.items() if not k.startswith('map-') %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+    <div class="row4">
+      {% for h in mapping.headers %}
+      <label>{{ h }}
+        <select name="map-{{ h }}">{% for f in mapping.fields %}<option value="{{ f }}" {{ 'selected' if mapping.used.get(h) == f }}>{{ f.replace('_', ' ') or '— ignore —' }}</option>{% endfor %}</select>
+      </label>
+      {% endfor %}
+    </div>
+    <button class="btn sm">Update preview</button>
+  </form>
+</section>
+{% endif %}
 {{ report_body(report) }}
 {% endblock %}

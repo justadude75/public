@@ -223,9 +223,13 @@ def upcoming_dates(vault: Vault, today: date, days: int = UPCOMING_DAYS) -> list
 
 
 def today_view(vault: Vault, today: date | None = None) -> dict:
+    from . import triggers
+
     today = today or date.today()
     statuses = compute_all(vault, today)
-    due = sorted((s for s in statuses.values() if s.is_due), key=lambda s: -s.priority)
+    snoozed = triggers.snoozed_due(vault, today)
+    due = sorted((s for s in statuses.values() if s.is_due and s.entity_id not in snoozed),
+                 key=lambda s: -s.priority)
     soon = sorted((s for s in statuses.values()
                    if not s.is_due and not s.covered and s.days_to_due is not None
                    and 0 <= s.days_to_due <= 7), key=lambda s: s.days_to_due)
@@ -252,4 +256,8 @@ def today_view(vault: Vault, today: date | None = None) -> dict:
         "recent": recent,
         "n_contacts": len(statuses),
         "n_due": len(due),
+        "n_snoozed": len(snoozed),
+        "briefs": triggers.brief_items(vault, today),
+        "debriefs": triggers.debrief_items(vault, today),
+        "fact_changes": triggers.fact_changes(vault, today),
     }

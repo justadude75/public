@@ -41,12 +41,8 @@ def register(app, vault, render, back, today_fn, entity_or_404) -> None:
             key = "rule" if src.startswith("rule:") else (
                 "model" if p["qual"].get("source") == "model" or src.startswith("model:") else "other")
             groups[key].append(p)
-        extra = {}
-        try:
-            from . import resolution
-            extra["dups"] = resolution.candidates(vault)
-        except ImportError:
-            extra["dups"] = []
+        from . import resolution
+        extra = {"dups": resolution.candidates(vault), "recent_merges": resolution.merges(vault, 5)}
         return render(request, "review.html", groups=groups,
                       disputed=repo.proposed_claims(vault, "disputed"),
                       added=sum(added.values()), rule_labels=inference.RULE_LABELS,
@@ -240,7 +236,9 @@ def register(app, vault, render, back, today_fn, entity_or_404) -> None:
             "gateway_base_url", "gateway_model", "gateway_enabled")}
         counts = {"chunks": vault.scalar("select count(*) from chunk"),
                   "embedded": vault.scalar("select count(*) from embedding")}
+        from . import triggers
         return render(request, "settings.html", meta=meta, rules=inference.rule_settings(vault),
+                      trig=triggers.settings(vault),
                       rule_labels=inference.RULE_LABELS, counts=counts, nav="settings")
 
     @app.post("/settings")
@@ -295,11 +293,8 @@ def register(app, vault, render, back, today_fn, entity_or_404) -> None:
     def api_inference():
         return JSONResponse(inference.run(vault))
 
-    try:
-        from . import routes2
-        routes2.register(app, vault, render, back, today_fn, entity_or_404)
-    except ImportError:
-        pass
+    from . import routes2
+    routes2.register(app, vault, render, back, today_fn, entity_or_404)
 
 
 class _FormProxy:

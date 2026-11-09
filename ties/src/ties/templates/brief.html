@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% from "macros.html" import basis_badge %}
+{% block title %}Brief · {{ b.event.title }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Brief: {{ b.event.title }}</h1>
+  <p class="muted">{{ b.event.start_at.replace('T', ' ') }} ({{ b.event.start_at | rel }}){% if b.event.location_name %} · {{ b.event.location_name }}{% endif %}</p></div>
+  <div class="actions"><a class="btn" href="/event/{{ b.event.id }}">Event</a><a class="btn" href="javascript:window.print()">Print</a></div>
+</div>
+{% if b.between %}<section class="card" style="margin-bottom:1rem"><h2>How they're connected</h2><ul class="plain small">{% for x in b.between %}<li>{{ x }}</li>{% endfor %}</ul></section>{% endif %}
+{% for p in b.people %}
+<section class="card brief">
+  <h2><a href="/e/{{ p.entity.id }}">{{ p.entity.display_name }}</a>
+    {% if p.status %}<span class="muted small">· last in touch {{ p.status.days_since ~ ' days ago' if p.status.last_contact else 'never logged' }} · {{ p.status.tier }}</span>{% endif %}</h2>
+  {% if p.summary %}<p class="memory-text">{{ p.summary }}</p>{% endif %}
+  <div class="grid2">
+    <div>
+      {% if p.changes %}<h3>New since you last spoke</h3><ul class="plain small">{% for c in p.changes %}<li>{{ c.label }}: {{ c.value_text or c.other_name }}</li>{% endfor %}</ul>{% endif %}
+      {% if p.topics %}<h3>Things to ask about</h3><ul class="plain small">{% for t in p.topics %}<li>{{ t }}</li>{% endfor %}</ul>{% endif %}
+      {% if p.loops %}<h3>Open loops</h3><ul class="plain small">{% for l in p.loops %}<li>{{ 'You owe' if l.mine else 'They owe' }}: {{ l.description }}{% if l.due_at %} <span class="muted">(due {{ l.due_at | rel }})</span>{% endif %}</li>{% endfor %}</ul>{% endif %}
+    </div>
+    <div>
+      {% if p.recent %}<h3>Last conversations</h3><ul class="plain small">{% for e in p.recent %}<li><span class="muted">{{ e.start_at | day }}</span> {{ e.title }}{% if e.notes %}<div class="muted">{{ e.notes | truncate(200) }}</div>{% endif %}</li>{% endfor %}</ul>{% endif %}
+      {% if p.shared %}<h3>People you both know</h3><ul class="plain small">{% for r in p.shared %}<li><a href="/e/{{ r.other_id }}">{{ r.other_name }}</a> <span class="muted">({{ r.label | lower }})</span></li>{% endfor %}</ul>{% endif %}
+      {% if p.suggestions %}<h3>Worth checking</h3><ul class="plain small">{% for s in p.suggestions %}<li>{{ s.label }} {{ s.other_name or s.value_text }}? <span class="muted">{{ s.qual.why }}</span></li>{% endfor %}</ul>{% endif %}
+    </div>
+  </div>
+</section>
+{% endfor %}
+{% endblock %}
