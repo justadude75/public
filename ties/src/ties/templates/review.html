@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Review{% endblock %}
+{% macro claim_line(p) -%}
+  <a href="/e/{{ p.subject_id }}">{{ p.subject_name }}</a>
+  <span class="muted">{{ p.predicate_label | lower if not p.qual.label else p.qual.label | replace('_', ' ') }}</span>
+  {% if p.object_id %}<a href="/e/{{ p.object_id }}">{{ p.object_name }}</a>{% else %}<strong>{{ p.value_text }}</strong>{% endif %}
+  {% if p.confidence < 1 %}<span class="badge muted">{{ p.confidence | pct }}%</span>{% endif %}
+  {% if p.qual.why %}<div class="muted small">Why: {{ p.qual.why }}</div>{% endif %}
+{%- endmacro %}
+{% macro group(title, items, note) -%}
+{% if items %}
+<section class="card">
+  <h2>{{ title }} <span class="muted">({{ items | length }})</span></h2>
+  {% if note %}<p class="muted small">{{ note }}</p>{% endif %}
+  <form method="post" action="/review/bulk" id="bulk-{{ title | replace(' ', '') }}">
+    <ul class="review">
+      {% for p in items %}
+      <li>
+        <input type="checkbox" name="ids" value="{{ p.id }}" aria-label="Select">
+        <span class="review-main">{{ claim_line(p) }}</span>
+        <span class="inline-forms">
+          <button class="btn sm primary" formaction="/claim/{{ p.id }}/confirm" name="basis" value="observed">Confirm</button>
+          <button class="btn sm" formaction="/claim/{{ p.id }}/reject">Reject</button>
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+    <div class="bulk">
+      <span class="muted small">Selected:</span>
+      <button class="btn sm" name="action" value="confirm">Confirm all selected</button>
+      <button class="btn sm" name="action" value="reject">Reject all selected</button>
+    </div>
+  </form>
+</section>
+{% endif %}
+{%- endmacro %}
+{% block content %}
+<div class="page-head">
+  <h1>Review</h1>
+  <p class="muted">Suggestions wait here until you confirm or reject them. Nothing here counts as a fact yet.{% if added %} {{ added }} new suggestion{{ 's' if added != 1 }} just added.{% endif %}</p>
+</div>
+{% set total = groups.rule | length + groups.model | length + groups.other | length + disputed | length + dups | length %}
+{% if not total %}<section class="card"><p class="muted">All clear. Nothing to review.</p></section>{% endif %}
+
+{% if disputed %}
+<section class="card attention">
+  <h2>Conflicts with what you entered <span class="muted">({{ disputed | length }})</span></h2>
+  <p class="muted small">An import disagreed with a fact you typed in. Your version stays until you choose.</p>
+  <ul class="review">
+    {% for d in disputed %}
+    <li>
+      <span class="review-main"><a href="/e/{{ d.subject_id }}">{{ d.subject_name }}</a> · {{ d.predicate_label }}:
+        yours <strong>{{ d.current.value_text or d.current.object_name if d.current else '—' }}</strong>,
+        import says <strong>{{ d.value_text or d.object_name }}</strong></span>
+      <span class="inline-forms">
+        <form method="post" action="/claim/{{ d.id }}/dispute"><input type="hidden" name="keep" value="mine"><button class="btn sm">Keep mine</button></form>
+        <form method="post" action="/claim/{{ d.id }}/dispute"><input type="hidden" name="keep" value="new"><button class="btn sm primary">Use import</button></form>
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% if dups %}
+<section class="card">
+  <h2>Possible duplicates <span class="muted">({{ dups | length }})</span></h2>
+  <ul class="review">
+    {% for d in dups %}
+    <li>
+      <span class="review-main"><a href="/e/{{ d.a.id }}">{{ d.a.display_name }}</a>{% if d.a.context %} <span class="muted small">{{ d.a.context }}</span>{% endif %}
+        and <a href="/e/{{ d.b.id }}">{{ d.b.display_name }}</a>{% if d.b.context %} <span class="muted small">{{ d.b.context }}</span>{% endif %}
+        <span class="reasons">{% for r in d.reasons %}<span>{{ r }}</span>{% endfor %}</span></span>
+      <span class="inline-forms">
+        <a class="btn sm primary" href="/merge?a={{ d.a.id }}&b={{ d.b.id }}">Compare &amp; merge</a>
+        <form method="post" action="/not-same"><input type="hidden" name="a" value="{{ d.a.id }}"><input type="hidden" name="b" value="{{ d.b.id }}"><button class="btn sm">Not the same</button></form>
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{{ group("Suggested by rules", groups.rule, "Patterns found in your own data. Turn rules on or off in Settings.") }}
+{{ group("Extracted by your local model", groups.model, "Read from your notes by the model. Check each one.") }}
+{{ group("Other proposals", groups.other, "Proposed by imports or agents.") }}
+{% endblock %}

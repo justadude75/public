@@ -67,11 +67,34 @@ def cmd_serve(args) -> None:
 
     vault = open_vault(Path(args.vault).expanduser())
     app = create_app(vault)
+    _start_background(vault)
     url = f"http://127.0.0.1:{args.port}"
     print(f"ties is running at {url}  (Ctrl+C to stop)")
     if args.open:
         webbrowser.open(url)
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
+
+
+def _start_background(vault: Vault) -> None:
+    """Keep embeddings up to date while the app runs (only when a local model is set)."""
+    import threading
+    import time
+
+    from . import textindex
+    from .ai import AIClient
+
+    def loop():
+        while True:
+            client = AIClient.from_vault(vault)
+            if client and client.embed_model:
+                try:
+                    while textindex.embed_pending(vault, client):
+                        pass
+                except Exception:
+                    pass
+            time.sleep(60)
+
+    threading.Thread(target=loop, daemon=True, name="ties-embed").start()
 
 
 def cmd_demo(args) -> None:

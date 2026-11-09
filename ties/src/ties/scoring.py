@@ -78,7 +78,8 @@ def compute_all(vault: Vault, today: date | None = None,
     if only:
         extra, params = " and e.id=?", (only,)
     contacts = vault.all(
-        f"""select e.id, e.display_name, rp.tier, rp.cadence_days, rp.closeness_self
+        f"""select e.id, e.display_name, rp.tier, rp.cadence_days, rp.closeness_self,
+                   rp.next_contact_at, rp.next_contact_set_at
             from relationship_profile rp join entity e on e.id = rp.entity_id
             where e.status='active' and e.engagement='contact'{extra}""", params)
     by_entity: dict[str, list[dict]] = {}
@@ -114,6 +115,13 @@ def compute_all(vault: Vault, today: date | None = None,
             st.next_due = st.last_contact + timedelta(days=cadence)
             st.days_to_due = (st.next_due - today).days
             st.ratio = st.days_since / cadence
+        override = parse_day(c["next_contact_at"])
+        set_on = parse_day(c["next_contact_set_at"])
+        override_active = bool(override and (st.last_contact is None or set_on is None
+                                             or st.last_contact <= set_on))
+        if override_active:
+            st.next_due = override
+            st.days_to_due = (override - today).days
         days = sorted({d for d, _ in occurred})
         if len(days) >= 3:
             gaps = [(b - a).days for a, b in zip(days, days[1:])]
@@ -147,7 +155,10 @@ def compute_all(vault: Vault, today: date | None = None,
         st.strength = 0.5 * interaction + 0.3 * closeness + 0.1 * multiplexity + 0.1 * reciprocity
 
         # due and priority (section 6.4)
-        if st.last_contact is None:
+        if override_active:
+            urgency = max(0.0, min(1 - st.days_to_due / cadence, 3.0))
+            st.reasons.append(f"Next contact set for {override.isoformat()}")
+        elif st.last_contact is None:
             urgency = 1.0
             st.reasons.append("No contact logged yet")
         else:
@@ -159,7 +170,10 @@ def compute_all(vault: Vault, today: date | None = None,
                 st.reasons.append(f"{st.days_since} days since last contact, every {cadence}")
         importance = 0.4 * TIER_WEIGHT[tier] + 0.3 * st.strength
         st.priority = urgency * importance
-        st.is_due = (st.last_contact is None or st.ratio >= DUE_RATIO) and not st.covered
+        if override_active:
+            st.is_due = st.days_to_due <= round(cadence * (1 - DUE_RATIO)) and not st.covered
+        else:
+            st.is_due = (st.last_contact is None or st.ratio >= DUE_RATIO) and not st.covered
         if st.covered and st.next_planned:
             st.reasons.append(f"Covered by {st.next_planned_title} on {st.next_planned.isoformat()}")
         if st.share_initiated_by_them is not None and len(recent) >= 4:

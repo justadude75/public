@@ -1,0 +1,21 @@
+{% macro report_body(report) -%}
+<div class="grid2">
+  <div>
+    {% for title, items in [('New entries', report.created), ('Matched existing', report.matched), ('Facts', report.claims_added), ('Events', report.events_added)] %}
+    {% if items %}<section class="card"><h2>{{ title }} <span class="muted">({{ items | length }})</span></h2>
+      <ul class="plain small">{% for i in items[:60] %}<li>{{ i }}</li>{% endfor %}{% if items | length > 60 %}<li class="muted">… and {{ items | length - 60 }} more</li>{% endif %}</ul></section>{% endif %}
+    {% endfor %}
+  </div>
+  <div>
+    {% if report.conflicts %}<section class="card attention"><h2>Conflicts ({{ report.conflicts | length }})</h2>
+      <p class="muted small">Your hand-entered facts are kept. These go to Review.</p>
+      <ul class="plain small">{% for i in report.conflicts %}<li>{{ i }}</li>{% endfor %}</ul></section>{% endif %}
+    {% for title, items in [('Follow-ups', report.follow_ups_added), ('Links', report.links_added), ('Removed (no longer in source)', report.claims_retired), ('Events removed', report.events_retired)] %}
+    {% if items %}<section class="card"><h2>{{ title }} <span class="muted">({{ items | length }})</span></h2>
+      <ul class="plain small">{% for i in items[:60] %}<li>{{ i }}</li>{% endfor %}</ul></section>{% endif %}
+    {% endfor %}
+    {% if report.warnings %}<section class="card"><h2>Notes</h2><ul class="plain small muted">{% for w in report.warnings[:40] %}<li>{{ w }}</li>{% endfor %}</ul></section>{% endif %}
+    {% if report.unchanged %}<p class="muted small">{{ report.unchanged }} items unchanged.</p>{% endif %}
+  </div>
+</div>
+{%- endmacro %}

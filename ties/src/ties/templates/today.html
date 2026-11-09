@@ -77,7 +77,7 @@
         <span><a href="/event/{{ ev.id }}">{{ ev.title }}</a> <span class="muted">{{ ev.start_at | day }}</span></span>
         <span class="inline-forms">
           {% for st, label in [('occurred','Yes'), ('cancelled','Cancelled'), ('missed','Missed')] %}
-          <form method="post" action="/event/{{ ev.id }}/status"><input type="hidden" name="status" value="{{ st }}"><input type="hidden" name="back" value="/"><button class="btn sm">{{ label }}</button></form>
+          <form method="post" action="/event/{{ ev.id }}/status"><input type="hidden" name="status" value="{{ st }}"><input type="hidden" name="back" value="{{ '/event/' ~ ev.id ~ '/debrief' if st == 'occurred' else '/' }}"><button class="btn sm">{{ label }}</button></form>
           {% endfor %}
         </span>
       </li>

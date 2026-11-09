@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% from "report_macros.html" import report_body %}
+{% block title %}Capture preview{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Check before saving</h1>
+  <form method="post" action="/capture">
+    {% for k, v in form.multi_items() if k not in ('model_data', 'origin', 'confirm', 'use_model') %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+    <input type="hidden" name="origin" value="{{ origin }}">
+    <input type="hidden" name="model_data" value="{{ model_data }}">
+    <input type="hidden" name="confirm" value="1">
+    <a class="btn" href="javascript:history.back()">Edit</a>
+    <button class="btn primary">Save {{ report.changes }} change{{ 's' if report.changes != 1 }}</button>
+  </form>
+</div>
+{% if not report.changes %}<section class="card"><p class="muted">Nothing structured was found. Add people above, or use the line formats shown on the capture page.</p></section>{% endif %}
+{{ report_body(report) }}
+{% endblock %}

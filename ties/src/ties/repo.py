@@ -17,8 +17,11 @@ import unicodedata
 from datetime import date
 from typing import Any, Iterable
 
+from . import textindex
 from .db import Vault
 from .registry import TIER_CADENCE, seed
+
+INDEXED_SOURCE_KINDS = {"note", "markdown", "web", "capture", "import"}
 
 # ── ids and normalization ────────────────────────────────────────────────────
 
@@ -141,14 +144,17 @@ def ego_id(vault: Vault) -> str:
 
 
 def _create_source(c, kind: str, content: str = "", title: str | None = None,
-                   uri: str | None = None, metadata: dict | None = None) -> str:
+                   uri: str | None = None, metadata: dict | None = None,
+                   external_key: str | None = None) -> str:
     sid = new_id()
     digest = hashlib.sha256((content or "").encode("utf-8")).hexdigest()
     c.execute(
-        "insert into source(id, kind, uri, title, content, content_hash, metadata) "
-        "values(?,?,?,?,?,?,?)",
-        (sid, kind, uri, title, content, digest, json.dumps(metadata or {})),
+        "insert into source(id, kind, external_key, uri, title, content, content_hash, metadata) "
+        "values(?,?,?,?,?,?,?,?)",
+        (sid, kind, external_key, uri, title, content, digest, json.dumps(metadata or {})),
     )
+    if content and kind in INDEXED_SOURCE_KINDS:
+        textindex.index_source(c, sid, content)
     return sid
 
 
@@ -188,6 +194,7 @@ def _create_entity(c, vault: Vault, type_id: str, name: str, engagement: str | N
     if engagement == "contact" and type_id == "person":
         c.execute("insert or ignore into relationship_profile(entity_id) values(?)", (eid,))
     vault.audit(c, "write", eid, {"op": "create_entity", "type": type_id, "name": name})
+    textindex.reindex_entity(c, eid)
     return eid
 
 
@@ -262,6 +269,7 @@ def update_entity(vault: Vault, entity_id: str, display_name: str, engagement: s
                           (entity_id,))
         _set_tags(c, "entity", entity_id, split_list(tags))
         vault.audit(c, "write", entity_id, {"op": "update_entity"})
+        textindex.reindex_entity(c, entity_id)
 
 
 def archive_entity(vault: Vault, entity_id: str) -> None:
@@ -428,6 +436,8 @@ def _add_claim(c, subject_id: str, predicate_id: str, value: Any = None,
     if source_id:
         c.execute("insert or ignore into claim_evidence(claim_id, source_id) values(?,?)",
                   (cid, source_id))
+    textindex.reindex_entity(c, subject_id)
+    textindex.reindex_entity(c, object_id)
     return cid
 
 
@@ -472,6 +482,7 @@ def end_claim(vault: Vault, claim_id: str, valid_to: str) -> str:
         c.execute("insert into claim_evidence(claim_id, source_id) "
                   "select ?, source_id from claim_evidence where claim_id=?", (cid, claim_id))
         vault.audit(c, "write", old["subject_id"], {"op": "end_claim", "claim": claim_id})
+        textindex.reindex_entity(c, old["subject_id"])
         return cid
 
 
@@ -482,6 +493,8 @@ def retract_claim(vault: Vault, claim_id: str) -> None:
         c.execute("update claim set status='rejected' where id=?", (claim_id,))
         vault.audit(c, "write", old["subject_id"] if old else None,
                     {"op": "retract_claim", "claim": claim_id})
+        if old:
+            textindex.reindex_entity(c, old["subject_id"])
 
 
 def _claim_rows(vault: Vault, where: str, params: tuple) -> list[dict]:
@@ -506,8 +519,18 @@ def _claim_rows(vault: Vault, where: str, params: tuple) -> list[dict]:
 
 def facts(vault: Vault, entity_id: str) -> list[dict]:
     """Current attribute claims (values, not relationships)."""
-    return _claim_rows(vault, "cl.subject_id=? and cl.status='accepted' and cl.object_id is null",
-                       (entity_id,))
+    return _claim_rows(vault, "cl.subject_id=? and cl.status='accepted' and cl.object_id is null "
+                       "and cl.basis<>'inferred'", (entity_id,))
+
+
+def inferences(vault: Vault, entity_id: str) -> list[dict]:
+    """Your own inferences (accepted, basis inferred) and suggestions waiting for review."""
+    rows = _claim_rows(vault, "(cl.subject_id=? or cl.object_id=?) and ("
+                       "(cl.status='accepted' and cl.basis='inferred') or cl.status='proposed')",
+                       (entity_id, entity_id))
+    for r in rows:
+        _orient(vault, r, entity_id)
+    return rows
 
 
 def claim_history(vault: Vault, entity_id: str) -> list[dict]:
@@ -519,23 +542,32 @@ def relations(vault: Vault, entity_id: str) -> list[dict]:
     """Current relationships, read from this entity's side."""
     out = []
     for r in _claim_rows(vault, "cl.status='accepted' and cl.object_id is not null "
-                         "and (cl.subject_id=? or cl.object_id=?)", (entity_id, entity_id)):
-        outgoing = r["subject_id"] == entity_id
-        if outgoing:
-            label, other_id, other_name, other_type = (
-                r["predicate_label"], r["object_id"], r["object_name"], r["object_type"])
-        else:
-            if r["symmetric"]:
-                label = r["predicate_label"]
-            elif r["inverse_id"]:
-                inv = predicate(vault, r["inverse_id"])
-                label = inv["label"] if inv else r["predicate_label"]
-            else:
-                label = r["reverse_label"] or f"{r['predicate_label']} (from)"
-            other_id, other_name, other_type = r["subject_id"], r["subject_name"], r["subject_type"]
-        out.append({**r, "label": label, "other_id": other_id, "other_name": other_name,
-                    "other_type": other_type, "outgoing": outgoing})
+                         "and cl.basis<>'inferred' and (cl.subject_id=? or cl.object_id=?)",
+                         (entity_id, entity_id)):
+        out.append(_orient(vault, r, entity_id))
     return out
+
+
+def _orient(vault: Vault, r: dict, entity_id: str) -> dict:
+    """Add label/other_* fields so a claim reads from entity_id's side."""
+    outgoing = r["subject_id"] == entity_id or not r["object_id"]
+    if outgoing:
+        label, other_id, other_name, other_type = (
+            r["predicate_label"], r["object_id"], r["object_name"], r["object_type"])
+    else:
+        if r["symmetric"]:
+            label = r["predicate_label"]
+        elif r["inverse_id"]:
+            inv = predicate(vault, r["inverse_id"])
+            label = inv["label"] if inv else r["predicate_label"]
+        else:
+            label = r["reverse_label"] or f"{r['predicate_label']} (from)"
+        other_id, other_name, other_type = r["subject_id"], r["subject_name"], r["subject_type"]
+    if r["qual"].get("label"):
+        label = str(r["qual"]["label"]).replace("_", " ").capitalize()
+    r.update(label=label, other_id=other_id, other_name=other_name, other_type=other_type,
+             outgoing=outgoing)
+    return r
 
 
 def current_value(vault: Vault, entity_id: str, predicate_id: str) -> dict | None:
@@ -573,6 +605,7 @@ def update_profile(vault: Vault, entity_id: str, tier: str, cadence_days: int | 
         c.execute("update entity set engagement='contact' where id=? and engagement<>'ego'",
                   (entity_id,))
         vault.audit(c, "write", entity_id, {"op": "update_profile"})
+        textindex.reindex_entity(c, entity_id)
 
 
 # ── events ───────────────────────────────────────────────────────────────────
@@ -957,3 +990,225 @@ def export_all(vault: Vault) -> dict:
         "schema_version": vault.get_meta("schema_version"),
         "tables": {t: vault.all(f'select * from "{t}"') for t in tables},
     }
+
+
+# ── links (the per-entity link library) ──────────────────────────────────────
+
+
+def _add_link(c, entity_id: str, url: str, note: str | None = None,
+              title: str | None = None) -> str | None:
+    url = (url or "").strip()
+    if not url:
+        return None
+    if not re.match(r"^[a-z]+://", url):
+        url = "https://" + url
+    existing = c.execute(
+        "select s.id from source s join entity_source es on es.source_id=s.id "
+        "where es.entity_id=? and s.uri=? and es.role='link'", (entity_id, url)).fetchone()
+    if existing:
+        return existing["id"]
+    sid = _create_source(c, "web", note or "", title=title or url, uri=url)
+    c.execute("insert into entity_source(entity_id, source_id, role, note) values(?,?,?,?)",
+              (entity_id, sid, "link", (note or "").strip() or None))
+    return sid
+
+
+def add_link(vault: Vault, entity_id: str, url: str, note: str | None = None) -> str | None:
+    with vault.tx() as c:
+        sid = _add_link(c, entity_id, url, note)
+        vault.audit(c, "write", entity_id, {"op": "add_link"})
+        return sid
+
+
+def remove_link(vault: Vault, entity_id: str, source_id: str) -> None:
+    with vault.tx() as c:
+        c.execute("delete from entity_source where entity_id=? and source_id=? and role='link'",
+                  (entity_id, source_id))
+        vault.audit(c, "write", entity_id, {"op": "remove_link"})
+
+
+def links(vault: Vault, entity_id: str) -> list[dict]:
+    return vault.all(
+        "select s.id, s.uri, s.title, es.note, es.added_at from entity_source es "
+        "join source s on s.id=es.source_id where es.entity_id=? and es.role='link' "
+        "order by es.added_at desc", (entity_id,))
+
+
+# ── inferences: confirm and reject ───────────────────────────────────────────
+
+
+def confirm_claim(vault: Vault, claim_id: str, basis: str = "observed") -> None:
+    """Accept a proposed claim. Inferences become facts with the basis you choose."""
+    with vault.tx() as c:
+        row = c.execute("select * from claim where id=?", (claim_id,)).fetchone()
+        if not row:
+            raise ValueError("Unknown claim")
+        quals = json.loads(row["qualifiers"] or "{}")
+        quals["confirmed_from"] = row["asserted_by"]
+        new_basis = basis if row["basis"] == "inferred" else row["basis"]
+        c.execute("update claim set status='accepted', basis=?, qualifiers=? where id=?",
+                  (new_basis, json.dumps(quals), claim_id))
+        pred = predicate(c, row["predicate_id"])
+        if pred and pred["cardinality"] == "one":
+            c.execute("update claim set status='superseded', superseded_by=? where subject_id=? "
+                      "and predicate_id=? and status='accepted' and id<>?",
+                      (claim_id, row["subject_id"], row["predicate_id"], claim_id))
+        vault.audit(c, "write", row["subject_id"], {"op": "confirm_claim", "claim": claim_id})
+        textindex.reindex_entity(c, row["subject_id"])
+        textindex.reindex_entity(c, row["object_id"])
+
+
+def reject_claim(vault: Vault, claim_id: str) -> None:
+    """Reject a proposed claim. Rule-based suggestions for the same pair do not come back."""
+    retract_claim(vault, claim_id)
+
+
+def resolve_dispute(vault: Vault, claim_id: str, keep_new: bool) -> None:
+    """A disputed claim (an import that disagreed with a hand-entered fact)."""
+    with vault.tx() as c:
+        row = c.execute("select * from claim where id=?", (claim_id,)).fetchone()
+        if not row:
+            raise ValueError("Unknown claim")
+        if keep_new:
+            c.execute("update claim set status='superseded', superseded_by=? where subject_id=? "
+                      "and predicate_id=? and status='accepted'",
+                      (claim_id, row["subject_id"], row["predicate_id"]))
+            c.execute("update claim set status='accepted' where id=?", (claim_id,))
+        else:
+            c.execute("update claim set status='rejected' where id=?", (claim_id,))
+        vault.audit(c, "write", row["subject_id"], {"op": "resolve_dispute", "keep_new": keep_new})
+        textindex.reindex_entity(c, row["subject_id"])
+
+
+def proposed_claims(vault: Vault, status: str = "proposed") -> list[dict]:
+    rows = _claim_rows(vault, "cl.status=?", (status,))
+    for r in rows:
+        _orient(vault, r, r["subject_id"])
+        if status == "disputed":
+            cur = _claim_rows(vault, "cl.subject_id=? and cl.predicate_id=? and cl.status='accepted'",
+                              (r["subject_id"], r["predicate_id"]))
+            r["current"] = cur[-1] if cur else None
+    return rows
+
+
+# ── the post-meeting debrief ─────────────────────────────────────────────────
+
+
+def set_next_contact(c, entity_id: str, when: str | None) -> None:
+    c.execute("update relationship_profile set next_contact_at=?, next_contact_set_at=date('now') "
+              "where entity_id=?", (when or None, entity_id))
+
+
+def debrief_event(vault: Vault, event_id: str, *, summary: str = "",
+                  learned: Iterable[dict] = (), inferences_: Iterable[dict] = (),
+                  follow_ups: Iterable[dict] = (), mentioned: Iterable[dict] = (),
+                  links_: Iterable[dict] = (), next_contact: str | None = None,
+                  mark_occurred: bool = True) -> dict:
+    """Record everything that came out of a meeting in one step.
+
+    learned / inferences_: {subject, predicate, value | object, basis, confidence, why}
+    follow_ups: {owner: me|them, who, text, due}
+    mentioned: {ref, predicate, to, basis}  (a new or existing person and how they relate)
+    links_: {url, note, target}
+    Subjects and targets are entity ids, or "event" for the meeting itself.
+    """
+    ego = ego_id(vault)
+    counts = {"facts": 0, "inferences": 0, "follow_ups": 0, "people": 0, "links": 0}
+    with vault.tx() as c:
+        ev = c.execute("select e.display_name from entity e join event_detail ed on "
+                       "ed.entity_id=e.id where e.id=?", (event_id,)).fetchone()
+        if not ev:
+            raise ValueError("Unknown event")
+        attendees = [r["entity_id"] for r in c.execute(
+            "select entity_id from participation where event_id=? and entity_id<>?",
+            (event_id, ego))]
+        src = _create_source(c, "note", summary.strip(), title=ev["display_name"]) \
+            if summary.strip() else _create_source(c, "manual", f"debrief {event_id}")
+        if summary.strip():
+            old = c.execute("select s.content from event_detail ed join source s on "
+                            "s.id=ed.notes_source_id where ed.entity_id=?", (event_id,)).fetchone()
+            combined = ((old["content"] + "\n\n") if old and old["content"] else "") + summary.strip()
+            nsrc = _create_source(c, "note", combined, title=ev["display_name"])
+            c.execute("update event_detail set notes_source_id=? where entity_id=?",
+                      (nsrc, event_id))
+        if mark_occurred:
+            c.execute("update event_detail set status='occurred' where entity_id=? and "
+                      "status='planned'", (event_id,))
+
+        def subject_of(ref):
+            return event_id if ref in (None, "", "event") else resolve_ref(c, vault, ref, "person",
+                                                                           "acquaintance")
+
+        for row, is_inference in [(r, False) for r in learned] + [(r, True) for r in inferences_]:
+            pid = (row.get("predicate") or "").strip()
+            if not pid or not (row.get("value") or row.get("object")):
+                continue
+            pred = predicate(c, pid)
+            if not pred:
+                continue
+            subj = subject_of(row.get("subject"))
+            obj = None
+            if pred["range_kind"] == "entity":
+                types = json.loads(pred["range_types"] or '["person"]')
+                obj = resolve_ref(c, vault, row.get("object"), types[0] if types[0] != "*"
+                                  else "person", "reference")
+            quals = {"from_event": event_id}
+            if row.get("why"):
+                quals["why"] = row["why"]
+            _add_claim(c, subj, pid, value=row.get("value") if not obj else None, object_id=obj,
+                       basis="inferred" if is_inference else (row.get("basis") or "told"),
+                       confidence=float(row.get("confidence") or (0.6 if is_inference else 1.0)),
+                       qualifiers=quals, source_id=src)
+            counts["inferences" if is_inference else "facts"] += 1
+
+        for fu in follow_ups:
+            text = (fu.get("text") or "").strip()
+            if not text:
+                continue
+            who = fu.get("who") or _mentioned_participant(c, text, attendees)
+            mine = fu.get("owner", "me") != "them"
+            from_id, to_id = (ego, who) if mine else (who or ego, ego)
+            _add_commitment(c, from_id, to_id, text, fu.get("due") or None, event_id)
+            counts["follow_ups"] += 1
+
+        for m in mentioned:
+            if not m.get("ref"):
+                continue
+            pid = resolve_ref(c, vault, m["ref"], "person", "acquaintance")
+            c.execute("insert or ignore into entity_source(entity_id, source_id, role) "
+                      "values(?,?,'mention')", (pid, src))
+            if m.get("predicate") and m.get("to"):
+                to = resolve_ref(c, vault, m["to"], "person", "acquaintance")
+                if to and to != pid:
+                    _add_claim(c, pid, m["predicate"], object_id=to,
+                               basis=m.get("basis") or "told",
+                               qualifiers={"from_event": event_id}, source_id=src)
+            counts["people"] += 1
+
+        for ln in links_:
+            if not (ln.get("url") or "").strip():
+                continue
+            target = subject_of(ln.get("target"))
+            _add_link(c, target, ln["url"], ln.get("note"))
+            counts["links"] += 1
+
+        if next_contact:
+            for a in attendees:
+                c.execute("insert or ignore into relationship_profile(entity_id) "
+                          "select id from entity where id=? and engagement='contact'", (a,))
+                set_next_contact(c, a, next_contact)
+        vault.audit(c, "write", event_id, {"op": "debrief", **counts})
+        for a in attendees:
+            textindex.reindex_entity(c, a)
+    return counts
+
+
+def find_by_name(c, name: str, type_id: str | None = None) -> list[dict]:
+    norm = normalize_name(name)
+    sql = ("select distinct e.id, e.type_id, e.engagement, e.display_name from entity_name n "
+           "join entity e on e.id=n.entity_id where n.name_norm=? and e.status='active'")
+    params: list = [norm]
+    if type_id:
+        sql += " and e.type_id=?"
+        params.append(type_id)
+    return c.execute(sql, params).fetchall()

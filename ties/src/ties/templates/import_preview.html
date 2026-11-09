@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% from "report_macros.html" import report_body %}
+{% block title %}Import preview{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>{{ title }}</h1>
+  <p class="muted">Nothing has been saved yet.{% if info and info.needs_gid %} {{ info.needs_gid }} notes will get an ID line in their properties so renames keep working.{% endif %}</p></div>
+  <form method="post" action="{{ action }}" enctype="multipart/form-data">
+    {% for k, v in hidden.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+    <input type="hidden" name="confirm" value="1">
+    <a class="btn" href="/import">Cancel</a>
+    <button class="btn primary" {{ 'disabled' if not report.changes }}>Apply {{ report.changes }} change{{ 's' if report.changes != 1 }}</button>
+  </form>
+</div>
+{{ report_body(report) }}
+{% endblock %}

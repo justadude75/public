@@ -238,3 +238,28 @@ details.menu[open] > summary { background: var(--surface-2); }
 .ac-list .ac-ctx { color: var(--muted); font-size: .82rem; flex: 1; }
 .ac-list .ac-new { color: var(--accent); }
 .dup-hint { font-size: .88rem; background: var(--warn-soft); color: var(--text); padding: .45rem .65rem; border-radius: 8px; margin-top: -.4rem; }
+
+/* phase 1 */
+.count { display: inline-block; min-width: 1.2rem; padding: 0 .35rem; border-radius: 99px; background: var(--accent); color: var(--accent-text); font-size: .72rem; text-align: center; }
+.topsearch input { width: 14rem; padding: .35rem .6rem; }
+@media (max-width: 1100px) { .topsearch { display: none; } }
+.top nav { flex-wrap: wrap; }
+.memory { margin-bottom: 1rem; }
+.memory-head { display: flex; align-items: baseline; gap: .75rem; flex-wrap: wrap; }
+.memory-head .inline-forms { margin-left: auto; }
+.memory-text { margin: .2rem 0 .4rem; font-size: 1.02rem; line-height: 1.6; }
+ul.review { list-style: none; margin: 0; padding: 0; }
+ul.review li { display: flex; gap: .6rem; align-items: center; padding: .55rem 0; border-top: 1px solid var(--line); }
+ul.review li:first-child { border-top: 0; }
+ul.review .review-main { flex: 1; min-width: 0; }
+ul.review input[type=checkbox] { width: auto; }
+.bulk { display: flex; gap: .4rem; align-items: center; margin-top: .6rem; padding-top: .6rem; border-top: 1px dashed var(--line); }
+.drow { display: grid; grid-template-columns: 10rem 11rem 1fr 8rem; gap: .4rem; align-items: start; }
+.drow .vo { display: grid; grid-template-columns: 1fr 1.2fr; gap: .4rem; min-width: 0; }
+[data-rows="fu"] .drow { grid-template-columns: 7rem 10rem 1fr 10rem; }
+[data-rows="ppl"] .drow { grid-template-columns: 1.4fr 1fr 1fr; }
+[data-rows="link"] .drow { grid-template-columns: 1.3fr 1fr 9rem; }
+[data-rows="inf"] .drow { grid-template-columns: 10rem 11rem 1.4fr 6rem 1fr; }
+[data-rows] { display: flex; flex-direction: column; gap: .45rem; }
+@media (max-width: 900px) { .drow, [data-rows] .drow { grid-template-columns: 1fr !important; padding-bottom: .6rem; border-bottom: 1px dashed var(--line); } }
+.facts .meta form { display: inline; }

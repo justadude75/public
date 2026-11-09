@@ -38,6 +38,26 @@
 {% if status.reasons %}<p class="reasons wide">{% for r in status.reasons %}<span>{{ r }}</span>{% endfor %}</p>{% endif %}
 {% endif %}
 
+{% if not is_ego and (memory.text or changes) %}
+<section class="card memory">
+  <div class="memory-head">
+    <h2>Memory</h2>
+    <span class="muted small">{{ 'written by ' ~ memory.generator.replace('model:', '') if memory.generator != 'rules' else 'from your facts and notes' }}{% if memory.stale %} · facts changed since{% endif %}</span>
+    <span class="inline-forms">
+      {% if ai_ready %}<form method="post" action="/e/{{ e.id }}/summary"><button class="btn sm">{{ 'Rewrite' if memory.generator != 'rules' else 'Write with local model' }}</button></form>{% endif %}
+      {% if memory.generator != 'rules' %}<form method="post" action="/e/{{ e.id }}/summary"><input type="hidden" name="clear" value="1"><button class="btn sm">Use rules</button></form>{% endif %}
+    </span>
+  </div>
+  {% if memory.text %}<p class="memory-text">{{ memory.text }}</p>{% endif %}
+  {% if changes %}
+  <h3>Changed since you last spoke</h3>
+  <ul class="plain small">
+    {% for ch in changes[:8] %}<li><span class="muted">{{ ch.recorded_at | day }}</span> {{ ch.label }}: {{ ch.value_text or ch.other_name }}{% if ch.status == 'superseded' %} <span class="badge muted">replaced</span>{% elif ch.status == 'proposed' %} <span class="badge basis-inferred">suggested</span>{% endif %}</li>{% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endif %}
+
 <div class="grid2">
 <div>
   <section class="card" id="facts">
@@ -126,6 +146,48 @@
         <button class="btn primary sm">Add relationship</button>
       </form>
     </details>
+  </section>
+
+  <section class="card" id="inferences">
+    <h2>Inferences <span class="muted small">— hunches and suggestions, not facts</span></h2>
+    {% if infer %}
+    <ul class="facts">
+      {% for f in infer %}
+      <li>
+        <span class="k">{{ f.label }}</span>
+        <span class="v">{% if f.other_id %}<a href="/e/{{ f.other_id }}">{{ f.other_name }}</a>{% else %}{{ f.value_text }}{% endif %}
+          {% if f.qual.why %}<span class="muted small">· {{ f.qual.why }}</span>{% endif %}</span>
+        <span class="meta"><span class="badge muted">{{ f.confidence | pct }}%</span>
+          {% if f.status == 'proposed' %}
+          <form method="post" action="/claim/{{ f.id }}/confirm"><input type="hidden" name="back" value="{{ here }}#inferences"><button class="btn sm primary" title="Confirm as a fact">✓</button></form>
+          <form method="post" action="/claim/{{ f.id }}/reject"><input type="hidden" name="back" value="{{ here }}#inferences"><button class="btn sm" title="Reject; it will not be suggested again">✕</button></form>
+          {% else %}
+          <form method="post" action="/claim/{{ f.id }}/confirm"><input type="hidden" name="back" value="{{ here }}#inferences"><input type="hidden" name="basis" value="observed"><button class="btn sm" title="It turned out true">Confirmed</button></form>
+          <form method="post" action="/claim/{{ f.id }}/retract"><input type="hidden" name="back" value="{{ here }}#inferences"><button class="btn sm" title="Remove">✕</button></form>
+          {% endif %}
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">None. Add your own from a debrief, or let the rules suggest some (Review).</p>{% endif %}
+  </section>
+
+  <section class="card" id="links">
+    <h2>Links</h2>
+    {% if links %}
+    <ul class="facts">
+      {% for l in links %}
+      <li><span class="k">{{ l.added_at | day }}</span>
+        <span class="v"><a href="{{ l.uri }}" target="_blank" rel="noreferrer">{{ l.title if l.title and l.title != l.uri else l.uri | replace('https://', '') | truncate(60) }}</a>{% if l.note %}<span class="muted small"> · {{ l.note }}</span>{% endif %}</span>
+        <span class="meta"><form method="post" action="{{ here }}/link"><input type="hidden" name="remove" value="{{ l.id }}"><button class="linkish" title="Remove">×</button></form></span></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    <form method="post" action="{{ here }}/link" class="inline">
+      <input name="url" placeholder="https://…" required>
+      <input name="note" placeholder="what it is">
+      <button class="btn sm">Add</button>
+    </form>
   </section>
 
   <section class="card">

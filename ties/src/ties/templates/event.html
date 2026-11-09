@@ -11,6 +11,8 @@
     <div>{{ tag_list(ev.tags) }}</div>
   </div>
   <div class="actions">
+    <a class="btn primary" href="/event/{{ ev.id }}/debrief">Debrief</a>
+    {% if ev.status == 'planned' %}<a class="btn" href="/event/{{ ev.id }}/brief">Brief</a>{% endif %}
     {% for st in EVENT_STATUSES if st != ev.status %}
     <form method="post" action="/event/{{ ev.id }}/status"><input type="hidden" name="status" value="{{ st }}"><button class="btn sm">Mark {{ st }}</button></form>
     {% endfor %}

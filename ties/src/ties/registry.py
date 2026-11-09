@@ -30,6 +30,9 @@ PREDICATES = [
     ("family_detail", "Family detail", None, [P], "string", None, "many", 1, 0, None, "sensitive", 14),
     ("industry", "Industry", None, [O], "string", None, "many", 1, 0, None, "normal", 15),
     ("description", "Description", None, [ANY], "string", None, "one", 0, 0, None, "normal", 16),
+    ("size", "Headcount", None, [O], "number", None, "one", 1, 0, None, "normal", 17),
+    ("seeking", "Looking for", None, [P, O], "string", None, "many", 1, 0, None, "normal", 18),
+    ("offering", "Can offer", None, [P, O], "string", None, "many", 1, 0, None, "normal", 19),
     ("fact", "Other fact", None, [ANY], "string", None, "many", 1, 0, None, "normal", 99),
     # edges: person → organization / place
     ("employed_by", "Works at", "Employs", [P], "entity", [O], "many", 1, 0, None, "normal", 20),
@@ -52,12 +55,19 @@ PREDICATES = [
     ("introduced_by", "Introduced to me by", "Introduced me to", [P], "entity", [P], "one", 0, 0, None, "normal", 39),
     # edges: anything
     ("attended", "Attended", "Attendee", [P, O], "entity", [E], "many", 0, 0, None, "normal", 40),
+    ("shares_connector", "Shares a connector with", None, [P], "entity", [P], "many", 0, 1, None, "normal", 41),
     ("related_to", "Related to", None, [ANY], "entity", [ANY], "many", 1, 1, None, "normal", 98),
 ]
 
 BASES = ["observed", "told", "heard", "public", "inferred"]
 TIERS = ["inner", "close", "active", "extended", "wider"]
 TIER_CADENCE = {"inner": 14, "close": 30, "active": 60, "extended": 120, "wider": 365}
+# Rule-based inference defaults (plan section 14). Stored per vault in meta "inference_rules".
+INFERENCE_RULES = {"shared_events": True, "shared_connector": True,
+                   "overlapping_tenure": True, "same_school_year": False}
+SMALL_ORG_MAX = 50
+SMALL_EVENT_MAX = 8
+
 TIER_WEIGHT = {"inner": 1.0, "close": 0.8, "active": 0.6, "extended": 0.4, "wider": 0.2}
 ENGAGEMENTS = ["contact", "acquaintance", "reference"]
 EVENT_KINDS = ["meeting", "meal", "call", "video", "message", "email", "event", "life_event", "other"]

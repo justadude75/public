@@ -18,7 +18,7 @@ def test_reopen_keeps_data_and_schema_version(tmp_path):
     v.close()
     v2 = Vault(path)
     assert repo.get_entity(v2, pid)["display_name"] == "Ana Silva"
-    assert v2.get_meta("schema_version") == "1"
+    assert int(v2.get_meta("schema_version")) >= 2
 
 
 def test_duplicate_detection_reasons(vault):

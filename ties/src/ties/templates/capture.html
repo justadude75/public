@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "macros.html" import picker %}
+{% block title %}Capture{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Quick capture</h1></div>
+<form method="post" action="/capture" class="card form">
+  <label>With (optional — leave empty for a general note)
+    {{ picker('participants', multi=true, type='person', create='person', placeholder='Add people…') }}</label>
+  <fieldset class="row3">
+    <label>Date <input type="date" name="date" value="{{ v.get('date', default_day) }}"></label>
+    <label>Kind <select name="kind" data-kind>{% for k in EVENT_KINDS %}<option value="{{ k }}">{{ k.replace('_', ' ') }}</option>{% endfor %}</select></label>
+    <label>Channel <select name="channel" data-channel>{% for c in CHANNELS %}<option value="{{ c }}">{{ c.replace('_', ' ') }}</option>{% endfor %}</select></label>
+  </fieldset>
+  <label>Note
+    <textarea name="text" rows="10" placeholder="Write freely. Structured lines are picked up exactly:
+- [[Sarah Chen]] interest:: grid storage
+- [[Sarah Chen]] works_at:: [[Voltgrid]] {from: 2027-01}
+- [ ] Send her the report due:: 2026-11-12
+- [ ] [[Sarah Chen]]: send me the deck
+- call:: [[Dev Patel]] about Denver">{{ v.get('text', '') }}</textarea>
+  </label>
+  {% if ai_ready %}
+  <label class="check-label"><input type="checkbox" name="use_model" value="1" checked> Also let my local model pull facts and follow-ups out of the free text (facts go to Review first)</label>
+  {% else %}
+  <p class="muted small">Tip: connect a local model in <a href="/settings">Settings</a> to also extract facts from free text.</p>
+  {% endif %}
+  <div class="form-actions"><button class="btn primary">Preview</button></div>
+</form>
+{% endblock %}

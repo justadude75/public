@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% from "macros.html" import picker %}
+{% block title %}Debrief · {{ ev.title }}{% endblock %}
+{% macro subject_select(name, include_event=false) -%}
+<select name="{{ name }}">
+  {% for a in attendees %}<option value="{{ a.id }}">{{ a.display_name }}</option>{% endfor %}
+  {% if include_event %}<option value="event">this meeting</option>{% endif %}
+</select>
+{%- endmacro %}
+{% macro pred_select(name, preds, empty='Choose…') -%}
+<select name="{{ name }}"><option value="">{{ empty }}</option>
+  {% for p in preds %}<option value="{{ p.id }}" data-range="{{ p.range_kind }}" data-range-types="{{ p.range_types }}">{{ p.label }}</option>{% endfor %}
+</select>
+{%- endmacro %}
+{% macro learned_row(i, prefix='learned', inference=false) -%}
+<div class="drow" data-pred-row>
+  {{ subject_select(prefix ~ '-' ~ i ~ '-subject') }}
+  {{ pred_select(prefix ~ '-' ~ i ~ '-predicate', all_preds) }}
+  <span class="vo"><input name="{{ prefix }}-{{ i }}-value" placeholder="value (text)" data-value>
+  <span data-object>{{ picker(prefix ~ '-' ~ i ~ '-object', type='', create='person,organization,place', placeholder='…or a person, org or place') }}</span></span>
+  {% if inference %}
+  <select name="{{ prefix }}-{{ i }}-confidence"><option value="0.8">likely</option><option value="0.6" selected>maybe</option><option value="0.4">hunch</option></select>
+  <input name="{{ prefix }}-{{ i }}-why" placeholder="why you think so">
+  {% else %}
+  <select name="{{ prefix }}-{{ i }}-basis">{% for b in BASES if b != 'inferred' %}<option {{ 'selected' if b == 'told' }}>{{ b }}</option>{% endfor %}</select>
+  {% endif %}
+</div>
+{%- endmacro %}
+{% macro fu_row(i) -%}
+<div class="drow">
+  <select name="fu-{{ i }}-owner"><option value="me">I owe</option><option value="them">They owe</option></select>
+  {{ subject_select('fu-' ~ i ~ '-who') }}
+  <input name="fu-{{ i }}-text" placeholder="what">
+  <input type="date" name="fu-{{ i }}-due">
+</div>
+{%- endmacro %}
+{% macro ppl_row(i) -%}
+<div class="drow">
+  {{ picker('ppl-' ~ i ~ '-ref', type='person', create='person', placeholder='Person mentioned…') }}
+  <select name="ppl-{{ i }}-predicate"><option value="">just mentioned</option>
+    {% for p in edge_preds if 'person' in (p.range_types or '') %}<option value="{{ p.id }}">{{ p.label | lower }}</option>{% endfor %}</select>
+  {{ subject_select('ppl-' ~ i ~ '-to') }}
+</div>
+{%- endmacro %}
+{% macro link_row(i) -%}
+<div class="drow">
+  <input name="link-{{ i }}-url" placeholder="https://…">
+  <input name="link-{{ i }}-note" placeholder="what it is">
+  {{ subject_select('link-' ~ i ~ '-target', include_event=true) }}
+</div>
+{%- endmacro %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Debrief: {{ ev.title }}</h1>
+  <p class="muted">{{ ev.start_at.replace('T', ' ') }} · with {% for a in attendees %}<a href="/e/{{ a.id }}">{{ a.display_name }}</a>{{ ', ' if not loop.last }}{% endfor %}</p></div>
+</div>
+<form method="post" action="/event/{{ ev.id }}/debrief" class="form">
+  <section class="card form compact">
+    <h2>Summary</h2>
+    <textarea name="summary" rows="5" placeholder="What did you talk about?">{{ '' }}</textarea>
+    {% if ev.notes %}<details class="small"><summary class="muted">Earlier notes</summary><div class="notes">{{ ev.notes }}</div></details>{% endif %}
+  </section>
+
+  <section class="card form compact">
+    <h2>What you learned</h2>
+    <p class="muted small">Facts about them. Pick a field, then type a value or pick a person, organization or place.</p>
+    <div data-rows="learned">{% for i in range(3) %}{{ learned_row(i) }}{% endfor %}</div>
+    <template id="tpl-learned">{{ learned_row('__i__') }}</template>
+    <button type="button" class="btn sm" data-add-row="learned" data-next="3">+ another</button>
+  </section>
+
+  <section class="card form compact">
+    <h2>Follow-ups</h2>
+    {% if loops %}
+    <p class="muted small">Still open from before. Tick any that this meeting closed:</p>
+    <ul class="plain small">{% for l in loops %}<li><label class="check-label"><input type="checkbox" name="done_loops" value="{{ l.id }}"> {{ 'You owe' if l.mine else 'They owe' }}: {{ l.description }}</label></li>{% endfor %}</ul>
+    {% endif %}
+    <div data-rows="fu">{% for i in range(3) %}{{ fu_row(i) }}{% endfor %}</div>
+    <template id="tpl-fu">{{ fu_row('__i__') }}</template>
+    <button type="button" class="btn sm" data-add-row="fu" data-next="3">+ another</button>
+  </section>
+
+  <div class="grid2">
+    <section class="card form compact">
+      <h2>People mentioned</h2>
+      <div data-rows="ppl">{% for i in range(2) %}{{ ppl_row(i) }}{% endfor %}</div>
+      <template id="tpl-ppl">{{ ppl_row('__i__') }}</template>
+      <button type="button" class="btn sm" data-add-row="ppl" data-next="2">+ another</button>
+    </section>
+    <section class="card form compact">
+      <h2>Links shared</h2>
+      <div data-rows="link">{% for i in range(2) %}{{ link_row(i) }}{% endfor %}</div>
+      <template id="tpl-link">{{ link_row('__i__') }}</template>
+      <button type="button" class="btn sm" data-add-row="link" data-next="2">+ another</button>
+    </section>
+  </div>
+
+  <section class="card form compact">
+    <h2>Inferences <span class="muted small">— your hunches, kept apart from facts</span></h2>
+    <div data-rows="inf">{% for i in range(2) %}{{ learned_row(i, 'inf', true) }}{% endfor %}</div>
+    <template id="tpl-inf">{{ learned_row('__i__', 'inf', true) }}</template>
+    <button type="button" class="btn sm" data-add-row="inf" data-next="2">+ another</button>
+  </section>
+
+  <section class="card form compact">
+    <h2>Next contact</h2>
+    <label>When should you next be in touch? <input type="date" name="next_contact" value=""></label>
+    <small class="muted">Leave empty to follow their usual cadence{% if next_default %} (next due {{ next_default }}){% endif %}. A date here moves their next due date.</small>
+  </section>
+
+  <div class="form-actions"><button class="btn primary">Save debrief</button></div>
+</form>
+{% endblock %}

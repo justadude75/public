@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Import{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Import</h1>
+  <p class="muted">Every import shows a preview first, can be run again safely (only changes come through), never overwrites what you typed in by hand, and can be undone as a whole batch.</p></div>
+<div class="grid2">
+<div>
+  <section class="card">
+    <h2>Markdown notes (Obsidian-style)</h2>
+    <p class="muted small">Reads typed notes (person, org, place, meeting) and daily notes from a folder on this computer. {% if write_gid %}Each typed note gets one <code>gid:</code> line in its properties so renames keep working.{% else %}ID lines are off (Settings).{% endif %} Templates: <code>docs/templates/</code>.</p>
+    <form method="post" action="/import/markdown" class="inline">
+      <input name="folder" value="{{ md_folder }}" placeholder="/path/to/your/notes" required>
+      <button class="btn primary sm">Preview</button>
+    </form>
+  </section>
+  {% block more_importers %}{% include "import_more.html" ignore missing %}{% endblock %}
+</div>
+<div>
+  <section class="card">
+    <h2>History</h2>
+    {% if batches %}
+    <ul class="plain">
+      {% for b in batches %}
+      <li class="row">
+        <span><strong>{{ b.importer }}</strong> <span class="muted small">{{ b.started_at }}{% if b.label %} · {{ b.label | truncate(40) }}{% endif %}</span><br>
+          <span class="small muted">{% for k, v in b.stats.items() if v %}{{ v }} {{ k }}{{ ', ' if not loop.last }}{% endfor %}</span></span>
+        {% if b.status == 'applied' %}
+        <form method="post" action="/import/rollback/{{ b.id }}" onsubmit="return confirm('Undo everything this import created?')"><button class="btn sm">Undo</button></form>
+        {% else %}<span class="badge muted">{{ b.status.replace('_', ' ') }}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">No imports yet.</p>{% endif %}
+  </section>
+</div>
+</div>
+{% endblock %}

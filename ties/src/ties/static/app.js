@@ -178,8 +178,54 @@
     });
   }
 
+  // Debrief rows: show a text box or an entity picker depending on the chosen field.
+  function initPredRow(row) {
+    const select = row.querySelector("select[name$='-predicate']");
+    const value = row.querySelector("[data-value]");
+    const objWrap = row.querySelector("[data-object]");
+    if (!select || !value || !objWrap) return;
+    const picker = objWrap.querySelector(".ac");
+    const apply = () => {
+      const opt = select.selectedOptions[0];
+      const isEntity = opt && opt.dataset.range === "entity";
+      value.hidden = isEntity;
+      objWrap.hidden = !isEntity && !!(opt && opt.value);
+      const vo = row.querySelector(".vo");
+      if (vo) vo.style.gridTemplateColumns = (value.hidden || objWrap.hidden) ? "1fr" : "";
+      if (picker && opt && opt.dataset.rangeTypes) {
+        let types = [];
+        try { types = (JSON.parse(opt.dataset.rangeTypes) || []).filter((t) => t !== "*"); } catch (_) { types = []; }
+        picker.dataset.type = types.length === 1 ? types[0] : "";
+        picker.dataset.create = (types.length ? types : ["person", "organization", "place"]).join(",");
+      }
+    };
+    select.addEventListener("change", apply);
+    apply();
+  }
+
+  function initAddRows() {
+    document.querySelectorAll("[data-add-row]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const name = btn.dataset.addRow;
+        const tpl = document.getElementById(`tpl-${name}`);
+        const rows = document.querySelector(`[data-rows="${name}"]`);
+        if (!tpl || !rows) return;
+        const i = parseInt(btn.dataset.next || "0", 10);
+        btn.dataset.next = String(i + 1);
+        const holder = document.createElement("div");
+        holder.innerHTML = tpl.innerHTML.replaceAll("__i__", String(i));
+        const row = holder.firstElementChild;
+        rows.appendChild(row);
+        row.querySelectorAll(".ac").forEach(initPicker);
+        if (row.matches("[data-pred-row]")) initPredRow(row);
+      });
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
-    document.querySelectorAll(".ac").forEach(initPicker);
+    document.querySelectorAll(".ac").forEach((root) => { if (!root.closest("template")) initPicker(root); });
+    document.querySelectorAll("[data-pred-row]").forEach(initPredRow);
+    initAddRows();
     initRelationForms();
     initDupCheck();
     initFollowUps();

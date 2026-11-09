@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Search{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Search</h1>
+  <form class="filters" action="/search"><input type="search" name="q" value="{{ q }}" placeholder="People, facts, notes…" autofocus><button class="btn">Search</button></form>
+</div>
+{% if res %}
+<p class="muted small">{{ 'Keyword and meaning search' if res.semantic else 'Keyword search (configure an embedding model in Settings to also search by meaning)' }}</p>
+<div class="grid2">
+  <section class="card">
+    <h2>People and organizations</h2>
+    {% if res.entities %}
+    <ul class="plain">{% for e in res.entities %}
+      <li><a href="{{ '/event/' if e.type_id == 'event' else '/e/' }}{{ e.id }}">{{ e.display_name }}</a> <span class="badge muted">{{ e.engagement or e.type_id }}</span>
+        {% if e.snippet %}<div class="muted small">{{ e.snippet }}</div>{% endif %}</li>
+    {% endfor %}</ul>
+    {% else %}<p class="muted">No matches.</p>{% endif %}
+  </section>
+  <section class="card">
+    <h2>Notes</h2>
+    {% if res.notes %}
+    <ul class="plain">{% for n in res.notes %}
+      <li>{% if n.owner %}<a href="{{ '/event/' if n.owner.type_id == 'event' else '/e/' }}{{ n.owner.id }}">{{ n.owner.display_name }}</a>{% else %}{{ n.title or 'Note' }}{% endif %}
+        <span class="muted small">{{ n.captured_at | day }}</span>
+        <div class="small">{{ n.snippet }}</div></li>
+    {% endfor %}</ul>
+    {% else %}<p class="muted">No matches.</p>{% endif %}
+  </section>
+</div>
+{% endif %}
+{% endblock %}

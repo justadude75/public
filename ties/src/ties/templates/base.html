@@ -14,9 +14,15 @@
       <a href="/" class="{{ 'on' if nav == 'today' }}">Today</a>
       <a href="/people" class="{{ 'on' if nav == 'people' }}">Network</a>
       <a href="/timeline" class="{{ 'on' if nav == 'timeline' }}">Timeline</a>
+      <a href="/graph" class="{{ 'on' if nav == 'graph' }}">Graph</a>
+      <a href="/insights" class="{{ 'on' if nav == 'insights' }}">Insights</a>
+      {% set rc = review_count() %}
+      <a href="/review" class="{{ 'on' if nav == 'review' }}">Review{% if rc %} <span class="count">{{ rc }}</span>{% endif %}</a>
     </nav>
+    <form class="topsearch" action="/search"><input type="search" name="q" placeholder="Search everything…" value="{{ q if nav == 'search' else '' }}"></form>
     <div class="actions">
       <a class="btn" href="/new">+ Add</a>
+      <a class="btn" href="/capture">Capture</a>
       <a class="btn primary" href="/log">Log interaction</a>
     </div>
   </header>
@@ -30,6 +36,8 @@
   </main>
   <footer class="foot">
     <span>{{ vault_name }}{% if encrypted %} · encrypted{% endif %} · local only</span>
+    <a href="/import">Import</a>
+    <a href="/settings">Settings</a>
     <a href="/export">Export JSON</a>
   </footer>
 </body>

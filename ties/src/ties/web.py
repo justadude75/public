@@ -13,7 +13,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import repo, scoring
+from . import memory, repo, scoring
+from .ai import AIClient
 from .db import Vault
 from .registry import (BASES, CHANNELS, ENGAGEMENTS, EVENT_KINDS, EVENT_STATUSES, TIER_CADENCE,
                        TIERS)
@@ -60,6 +61,8 @@ def create_app(vault: Vault, today_fn=date.today) -> FastAPI:
                                              today_fn())
     env.filters["day"] = lambda s: (s or "")[:10]
     env.filters["pct"] = lambda x: f"{round((x or 0) * 100)}"
+    env.globals["review_count"] = lambda: vault.scalar(
+        "select count(*) from claim where status in ('proposed','disputed')") or 0
 
     def render(request: Request, template: str, **ctx) -> HTMLResponse:
         ctx.setdefault("error", request.query_params.get("error"))
@@ -173,6 +176,11 @@ def create_app(vault: Vault, today_fn=date.today) -> FastAPI:
             history=repo.claim_history(vault, entity_id) if history else None,
             is_ego=ent["engagement"] == "ego",
             nav="people",
+            links=repo.links(vault, entity_id),
+            infer=repo.inferences(vault, entity_id),
+            memory=memory.get_summary(vault, entity_id, today_fn()),
+            changes=memory.changed_since_last_contact(vault, entity_id, today_fn()),
+            ai_ready=AIClient.from_vault(vault) is not None,
         )
         return render(request, "entity.html", **ctx)
 
@@ -350,4 +358,7 @@ def create_app(vault: Vault, today_fn=date.today) -> FastAPI:
         return Response(payload, media_type="application/json",
                         headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
+    from .routes import register
+
+    register(app, vault, render, back, today_fn, entity_or_404)
     return app
