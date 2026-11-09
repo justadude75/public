@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}ties{% endblock %} · ties</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="/">ties</a>
+    <nav>
+      <a href="/" class="{{ 'on' if nav == 'today' }}">Today</a>
+      <a href="/people" class="{{ 'on' if nav == 'people' }}">Network</a>
+      <a href="/timeline" class="{{ 'on' if nav == 'timeline' }}">Timeline</a>
+    </nav>
+    <div class="actions">
+      <a class="btn" href="/new">+ Add</a>
+      <a class="btn primary" href="/log">Log interaction</a>
+    </div>
+  </header>
+  {% if not encrypted %}
+  <div class="banner warn">This vault file is not encrypted. Create an encrypted one with <code>ties init --encrypt</code>.</div>
+  {% endif %}
+  <main>
+    {% if flash %}<div class="banner ok">{{ flash }}</div>{% endif %}
+    {% if error %}<div class="banner err">{{ error }}</div>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="foot">
+    <span>{{ vault_name }}{% if encrypted %} · encrypted{% endif %} · local only</span>
+    <a href="/export">Export JSON</a>
+  </footer>
+</body>
+</html>

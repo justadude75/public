@@ -19,8 +19,8 @@ next_contact:           # optional YYYY-MM-DD; overrides cadence for attendees
 - [[ ]] predicate:: value
 
 ## Follow-ups
-- [ ] (mine) 📅 
-- [ ] [[ ]]: (theirs) 📅 
+- [ ] (mine) due:: 
+- [ ] [[ ]]: (theirs) due:: 
 
 ## People mentioned
 - [[ ]]

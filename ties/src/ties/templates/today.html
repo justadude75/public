@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% from "macros.html" import event_row %}
+{% block title %}Today{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Today</h1>
+  <p class="muted">{{ t.today.strftime('%A') }} {{ t.today.day }} {{ t.today.strftime('%B %Y') }} · {{ t.n_contacts }} tracked contacts · {{ t.n_due }} due</p>
+</div>
+
+{% if t.n_contacts == 0 %}
+<section class="card empty">
+  <h2>Start with a few people</h2>
+  <p>Add the people you want to stay in touch with as <strong>contacts</strong>, then log your last interaction with each. The Today list fills itself from there.</p>
+  <p><a class="btn primary" href="/new">Add a person</a></p>
+</section>
+{% endif %}
+
+<div class="grid2">
+<div>
+  <section class="card">
+    <h2>Reach out</h2>
+    {% if t.due %}
+    <ul class="due">
+      {% for s in t.due %}
+      <li>
+        <div class="due-main">
+          <a class="name" href="/e/{{ s.entity_id }}">{{ s.name }}</a>
+          <span class="badge tier-{{ s.tier }}">{{ s.tier }}</span>
+          <div class="reasons">{% for r in s.reasons %}<span>{{ r }}</span>{% endfor %}</div>
+          {% if s.last_event_title %}<div class="muted small">Last: {{ s.last_event_title }} ({{ s.last_contact | rel }})</div>{% endif %}
+        </div>
+        <div class="due-actions">
+          <a class="btn sm primary" href="/log?with={{ s.entity_id }}">Log</a>
+          <a class="btn sm" href="/log?status=planned&with={{ s.entity_id }}">Schedule</a>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">Nobody is due. Nice.</p>
+    {% endif %}
+    {% if t.soon %}
+    <h3>Coming due this week</h3>
+    <ul class="plain">
+      {% for s in t.soon %}<li><a href="/e/{{ s.entity_id }}">{{ s.name }}</a> <span class="muted">due {{ s.next_due | rel }}</span></li>{% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Open follow-ups</h2>
+    {% if t.loops %}
+    <ul class="loops">
+      {% for l in t.loops %}
+      <li class="{{ 'late' if l.due_in is not none and l.due_in < 0 }}">
+        <form method="post" action="/loop/{{ l.id }}"><input type="hidden" name="status" value="done"><input type="hidden" name="back" value="/"><button class="check" title="Mark done">✓</button></form>
+        <span>
+          {% if l.mine %}<span class="badge">you owe</span>{% else %}<span class="badge theirs">they owe</span>{% endif %}
+          {{ l.description }}
+          {% if l.other_id %}<span class="muted">· <a href="/e/{{ l.other_id }}">{{ l.other_name }}</a></span>{% endif %}
+          {% if l.due_at %}<span class="muted">· due {{ l.due_at | rel }}</span>{% endif %}
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">No open follow-ups.</p>{% endif %}
+  </section>
+</div>
+
+<div>
+  {% if t.unlogged %}
+  <section class="card attention">
+    <h2>Did these happen?</h2>
+    <ul class="plain">
+      {% for ev in t.unlogged %}
+      <li class="row">
+        <span><a href="/event/{{ ev.id }}">{{ ev.title }}</a> <span class="muted">{{ ev.start_at | day }}</span></span>
+        <span class="inline-forms">
+          {% for st, label in [('occurred','Yes'), ('cancelled','Cancelled'), ('missed','Missed')] %}
+          <form method="post" action="/event/{{ ev.id }}/status"><input type="hidden" name="status" value="{{ st }}"><input type="hidden" name="back" value="/"><button class="btn sm">{{ label }}</button></form>
+          {% endfor %}
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  <section class="card">
+    <h2>Next 14 days</h2>
+    {% if t.upcoming or t.dates %}
+    <ul class="events">
+      {% for d in t.dates %}
+      <li class="ev"><span class="ev-date">{{ d.date.isoformat() }}</span><span class="ev-main">🎂 <a href="/e/{{ d.entity_id }}">{{ d.name }}</a> · {{ d.what }} <span class="muted">{{ d.date | rel }}</span></span></li>
+      {% endfor %}
+      {% for ev in t.upcoming %}{{ event_row(ev) }}{% endfor %}
+    </ul>
+    {% else %}<p class="muted">Nothing scheduled.</p>{% endif %}
+  </section>
+
+  <section class="card">
+    <h2>Last 7 days</h2>
+    {% if t.recent %}
+    <ul class="events">{% for ev in t.recent %}{{ event_row(ev) }}{% endfor %}</ul>
+    {% else %}<p class="muted">No interactions logged this week.</p>{% endif %}
+  </section>
+</div>
+</div>
+{% endblock %}

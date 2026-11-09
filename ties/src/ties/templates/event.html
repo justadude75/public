@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% from "macros.html" import tag_list %}
+{% block title %}{{ ev.title }}{% endblock %}
+{% block content %}
+<div class="page-head entity-head">
+  <div>
+    <h1>{{ ev.title }}</h1>
+    <p class="muted">{{ ev.start_at.replace('T', ' ') }} · {{ ev.kind.replace('_', ' ') }}{% if ev.channel %} · {{ ev.channel.replace('_', ' ') }}{% endif %}{% if ev.location_name %} · <a href="/e/{{ ev.location_id }}">{{ ev.location_name }}</a>{% endif %}
+      · <span class="badge st-{{ ev.status }}">{{ ev.status }}</span>
+      {% if not ev.counts_as_contact %}<span class="badge muted">does not count as contact</span>{% endif %}</p>
+    <div>{{ tag_list(ev.tags) }}</div>
+  </div>
+  <div class="actions">
+    {% for st in EVENT_STATUSES if st != ev.status %}
+    <form method="post" action="/event/{{ ev.id }}/status"><input type="hidden" name="status" value="{{ st }}"><button class="btn sm">Mark {{ st }}</button></form>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="grid2">
+  <section class="card">
+    <h2>Notes</h2>
+    {% if ev.notes %}<div class="notes">{{ ev.notes }}</div>{% else %}<p class="muted">No notes yet.</p>{% endif %}
+    <form method="post" action="/event/{{ ev.id }}/note" class="form compact">
+      <textarea name="text" rows="4" placeholder="Add to the notes…"></textarea>
+      <button class="btn sm">Add note</button>
+    </form>
+  </section>
+  <div>
+    <section class="card">
+      <h2>People</h2>
+      <ul class="plain">
+        {% for p in ev.participants %}<li><a href="/e/{{ p.id }}">{{ p.display_name }}</a>{% if p.id == ego %} <span class="badge">you</span>{% endif %}</li>{% endfor %}
+      </ul>
+      {% if ev.initiated_by_name %}<p class="muted small">Started by {{ ev.initiated_by_name }}</p>{% endif %}
+    </section>
+    {% if loops %}
+    <section class="card">
+      <h2>Follow-ups from this</h2>
+      <ul class="loops">
+        {% for l in loops %}
+        <li class="{{ 'done' if l.status == 'done' }}">
+          {% if l.status == 'open' %}<form method="post" action="/loop/{{ l.id }}"><input type="hidden" name="status" value="done"><input type="hidden" name="back" value="/event/{{ ev.id }}"><button class="check" title="Mark done">✓</button></form>{% else %}<span class="check done">✓</span>{% endif %}
+          <span>{{ l.from_name }} → {{ l.to_name or '—' }}: {{ l.description }}{% if l.due_at %} <span class="muted">· due {{ l.due_at }}</span>{% endif %}</span>
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

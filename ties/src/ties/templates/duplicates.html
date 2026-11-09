@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Possible duplicate{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Is this someone you already have?</h1></div>
+<section class="card">
+  <p>You are adding <strong>{{ name }}</strong>. These look similar:</p>
+  <ul class="dups">
+    {% for d in dups %}
+    <li>
+      <a href="/e/{{ d.id }}" class="name">{{ d.display_name }}</a>
+      {% if d.context %}<span class="muted">{{ d.context }}</span>{% endif %}
+      <span class="reasons">{% for r in d.reasons %}<span>{{ r }}</span>{% endfor %}</span>
+      <a class="btn sm" href="/e/{{ d.id }}">Open this one</a>
+    </li>
+    {% endfor %}
+  </ul>
+  <form method="post" action="/new">
+    {% for k, v in form.multi_items() %}{% if k != 'force' %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}{% endfor %}
+    <input type="hidden" name="force" value="1">
+    <button class="btn primary">No, create {{ name }} as new</button>
+  </form>
+</section>
+{% endblock %}

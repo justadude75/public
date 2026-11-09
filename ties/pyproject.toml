@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ties"
+version = "0.1.0"
+description = "A local-first personal relationship graph"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn>=0.27",
+  "jinja2>=3.1",
+  "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+encryption = [
+  "sqlcipher3-binary; sys_platform == 'linux'",
+  "sqlcipher3; sys_platform != 'linux'",
+]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[project.scripts]
+ties = "ties.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ties = ["migrations/*.sql", "templates/*.html", "static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

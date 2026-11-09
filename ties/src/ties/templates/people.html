@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Network{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Network</h1>
+  <form class="filters" method="get">
+    <input type="search" name="q" value="{{ f.q }}" placeholder="Filter by name">
+    <select name="type">
+      <option value="">All types</option>
+      {% for k, label in TYPE_LABELS.items() %}<option value="{{ k }}" {{ 'selected' if f.type == k }}>{{ label }}</option>{% endfor %}
+    </select>
+    <select name="engagement">
+      <option value="">Any engagement</option>
+      {% for g in ENGAGEMENTS %}<option {{ 'selected' if f.engagement == g }}>{{ g }}</option>{% endfor %}
+    </select>
+    <select name="tag">
+      <option value="">Any tag</option>
+      {% for t in tags %}<option value="{{ t.label }}" {{ 'selected' if f.tag == t.label }}>{{ t.label }} ({{ t.n }})</option>{% endfor %}
+    </select>
+    <select name="sort">
+      <option value="name" {{ 'selected' if f.sort == 'name' }}>Sort: name</option>
+      <option value="due" {{ 'selected' if f.sort == 'due' }}>Sort: due soonest</option>
+      <option value="recent" {{ 'selected' if f.sort == 'recent' }}>Sort: most recent contact</option>
+    </select>
+    <button class="btn">Apply</button>
+  </form>
+</div>
+
+<section class="card flush">
+  {% if rows %}
+  <table class="list">
+    <thead><tr><th>Name</th><th>Context</th><th>Tier</th><th class="num">Last contact</th><th class="num">Next due</th><th>Tags</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    {% set s = r.status %}
+    <tr>
+      <td><a href="/e/{{ r.id }}">{{ r.display_name }}</a> <span class="badge muted">{{ r.engagement or r.type_id }}</span></td>
+      <td class="muted">{{ r.context }}</td>
+      <td>{% if s %}<span class="badge tier-{{ s.tier }}">{{ s.tier }}</span>{% endif %}</td>
+      <td class="num">{% if s and s.days_since is not none %}{{ s.days_since }}d ago{% elif s %}<span class="muted">never</span>{% endif %}</td>
+      <td class="num">{% if s and s.covered %}<span class="muted">planned {{ s.next_planned | rel }}</span>{% elif s and s.days_to_due is not none %}<span class="{{ 'late' if s.days_to_due < 0 }}">{{ s.next_due | rel }}</span>{% elif s %}<span class="late">now</span>{% endif %}</td>
+      <td>{% for t in r.tags %}<span class="tag">{{ t }}</span>{% endfor %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted pad">Nothing here yet. <a href="/new">Add someone</a>.</p>
+  {% endif %}
+</section>
+{% endblock %}

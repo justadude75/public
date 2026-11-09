@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+{% from "macros.html" import picker, basis_badge, tag_list, event_row %}
+{% block title %}{{ e.display_name }}{% endblock %}
+{% block content %}
+{% set here = '/e/' ~ e.id %}
+<div class="page-head entity-head">
+  <div>
+    <h1>{{ e.display_name }}{% if is_ego %} <span class="badge">you</span>{% endif %}</h1>
+    <p class="muted">
+      {{ TYPE_LABELS.get(e.type_id, e.type_id) }}{% if e.engagement and not is_ego %} · {{ e.engagement }}{% endif %}
+      {% if aliases %} · also {{ aliases | join(', ') }}{% endif %}
+      {% if former %} · formerly {{ former | join(', ') }}{% endif %}
+    </p>
+    <div>{{ tag_list(tags) }}</div>
+  </div>
+  {% if e.type_id == 'person' and not is_ego %}
+  <div class="actions">
+    <a class="btn primary" href="/log?with={{ e.id }}">Log interaction</a>
+    <a class="btn" href="/log?status=planned&with={{ e.id }}">Schedule</a>
+  </div>
+  {% endif %}
+</div>
+
+{% if status %}
+<section class="card status-strip">
+  <div><span class="label">Last contact</span><strong>{% if status.last_contact %}{{ status.days_since }} days ago{% else %}never logged{% endif %}</strong>
+    {% if status.last_event_title %}<span class="muted small">{{ status.last_event_title }}</span>{% endif %}</div>
+  <div><span class="label">Cadence</span><strong>every {{ status.cadence }} days</strong>
+    <span class="muted small">{{ status.tier }}{% if status.cadence_source == 'custom' %}, custom{% endif %}{% if status.learned_cadence %} · actual ≈ {{ status.learned_cadence }}d{% endif %}</span></div>
+  <div><span class="label">Next due</span>
+    {% if status.covered %}<strong>planned</strong><span class="muted small"><a href="/event/{{ status.next_planned_id }}">{{ status.next_planned_title }}</a> {{ status.next_planned | rel }}</span>
+    {% elif status.next_due %}<strong class="{{ 'late' if status.days_to_due < 0 }}">{{ status.next_due | rel }}</strong><span class="muted small">{{ status.next_due.isoformat() }}</span>
+    {% else %}<strong class="late">now</strong>{% endif %}</div>
+  <div title="interactions {{ status.strength_parts.interactions | pct }} · closeness {{ status.strength_parts.closeness | pct }} · contexts {{ status.strength_parts.contexts | pct }} · reciprocity {{ status.strength_parts.reciprocity | pct }}">
+    <span class="label">Strength</span><strong>{{ status.strength | pct }}%</strong>
+    <span class="muted small">{{ status.n_contacts }} logged contact{{ 's' if status.n_contacts != 1 }}</span></div>
+</section>
+{% if status.reasons %}<p class="reasons wide">{% for r in status.reasons %}<span>{{ r }}</span>{% endfor %}</p>{% endif %}
+{% endif %}
+
+<div class="grid2">
+<div>
+  <section class="card" id="facts">
+    <h2>Facts</h2>
+    {% if facts %}
+    <ul class="facts">
+      {% for f in facts %}
+      <li class="{{ 'sensitive' if f.sensitivity != 'normal' }}">
+        <span class="k">{{ f.predicate_label }}</span>
+        <span class="v">{{ f.value_text }}
+          {% if f.valid_from or f.valid_to %}<span class="muted small">{{ f.valid_from or '…' }} – {{ f.valid_to or 'now' }}</span>{% endif %}
+          {% if f.qual.note %}<span class="muted small">· {{ f.qual.note }}</span>{% endif %}
+        </span>
+        <span class="meta">{{ basis_badge(f.basis) }}{% if f.confidence < 1 %}<span class="badge muted">{{ f.confidence | pct }}%</span>{% endif %}
+          <details class="menu"><summary>⋯</summary>
+            <div class="menu-body">
+              <span class="muted small">recorded {{ f.recorded_at | day }}</span>
+              <form method="post" action="/claim/{{ f.id }}/end"><input type="hidden" name="back" value="{{ here }}"><input type="date" name="valid_to"><button class="btn sm">No longer true</button></form>
+              <form method="post" action="/claim/{{ f.id }}/retract"><input type="hidden" name="back" value="{{ here }}"><button class="btn sm danger">Wrong, remove</button></form>
+            </div>
+          </details>
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">No facts yet.</p>{% endif %}
+    <details class="add">
+      <summary>Add a fact</summary>
+      <form method="post" action="{{ here }}/fact" class="form compact">
+        <div class="row2">
+          <label>What <select name="predicate_id">{% for p in value_preds %}<option value="{{ p.id }}" data-range="{{ p.range_kind }}">{{ p.label }}</option>{% endfor %}</select></label>
+          <label>Value <input name="value" required></label>
+        </div>
+        <div class="row4">
+          <label>How you know <select name="basis">{% for b in BASES %}<option {{ 'selected' if b == 'told' }}>{{ b }}</option>{% endfor %}</select></label>
+          <label>Confidence <select name="confidence"><option value="1">certain</option><option value="0.8">likely</option><option value="0.5">maybe</option></select></label>
+          <label>From <input name="valid_from" placeholder="YYYY or YYYY-MM-DD"></label>
+          <label>Until <input name="valid_to" placeholder="blank = still true"></label>
+        </div>
+        <label>Note <input name="note" placeholder="optional context or source"></label>
+        <button class="btn primary sm">Add fact</button>
+      </form>
+    </details>
+  </section>
+
+  <section class="card" id="relations">
+    <h2>Relationships</h2>
+    {% if relations %}
+    <ul class="facts">
+      {% for r in relations %}
+      <li>
+        <span class="k">{{ r.label }}</span>
+        <span class="v"><a href="/e/{{ r.other_id }}">{{ r.other_name }}</a>
+          {% if r.valid_from or r.valid_to %}<span class="muted small">{{ r.valid_from or '…' }} – {{ r.valid_to or 'now' }}</span>{% endif %}
+          {% if r.qual.note %}<span class="muted small">· {{ r.qual.note }}</span>{% endif %}</span>
+        <span class="meta">{{ basis_badge(r.basis) }}
+          <details class="menu"><summary>⋯</summary>
+            <div class="menu-body">
+              <form method="post" action="/claim/{{ r.id }}/end"><input type="hidden" name="back" value="{{ here }}"><input type="date" name="valid_to"><button class="btn sm">Ended</button></form>
+              <form method="post" action="/claim/{{ r.id }}/retract"><input type="hidden" name="back" value="{{ here }}"><button class="btn sm danger">Wrong, remove</button></form>
+            </div>
+          </details>
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">No relationships yet.</p>{% endif %}
+    <details class="add">
+      <summary>Add a relationship</summary>
+      <form method="post" action="{{ here }}/fact" class="form compact" data-relation-form>
+        <div class="row2">
+          <label>Relationship
+            <select name="predicate_id" data-relation-select required>
+              <option value="" disabled selected>Choose…</option>
+              {% for p in edge_preds %}<option value="{{ p.id }}" data-range-types="{{ p.range_types }}">{{ p.label }}</option>{% endfor %}
+            </select></label>
+          <label>With {{ picker('object', type='', create='person', placeholder='Person, organization or place…') }}</label>
+        </div>
+        <div class="row4">
+          <label>How you know <select name="basis">{% for b in BASES %}<option {{ 'selected' if b == 'told' }}>{{ b }}</option>{% endfor %}</select></label>
+          <label>Confidence <select name="confidence"><option value="1">certain</option><option value="0.8">likely</option><option value="0.5">maybe</option></select></label>
+          <label>From <input name="valid_from" placeholder="YYYY"></label>
+          <label>Until <input name="valid_to" placeholder="blank = ongoing"></label>
+        </div>
+        <label>Note <input name="note" placeholder="e.g. role, team, how they're related"></label>
+        <button class="btn primary sm">Add relationship</button>
+      </form>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>Contact details</h2>
+    {% if idents %}
+    <ul class="facts">
+      {% for i in idents %}
+      <li><span class="k">{{ i.scheme }}</span>
+        <span class="v">{% if i.scheme == 'email' %}<a href="mailto:{{ i.value }}">{{ i.value }}</a>{% elif i.scheme == 'url' %}<a href="https://{{ i.value }}" rel="noreferrer" target="_blank">{{ i.value }}</a>{% else %}{{ i.value }}{% endif %}</span>
+        <span class="meta"><form method="post" action="{{ here }}/identifier"><input type="hidden" name="scheme" value="{{ i.scheme }}"><input type="hidden" name="value" value="{{ i.value }}"><button class="linkish" name="remove" value="1" title="Remove">×</button></form></span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    <form method="post" action="{{ here }}/identifier" class="inline">
+      <select name="scheme"><option>email</option><option>phone</option><option>url</option><option>handle</option><option>other</option></select>
+      <input name="value" placeholder="add…">
+      <button class="btn sm">Add</button>
+    </form>
+  </section>
+</div>
+
+<div>
+  {% if e.type_id == 'person' and not is_ego %}
+  <section class="card" id="loops">
+    <h2>Follow-ups</h2>
+    {% if loops %}
+    <ul class="loops">
+      {% for l in loops %}
+      <li>
+        <form method="post" action="/loop/{{ l.id }}"><input type="hidden" name="status" value="done"><input type="hidden" name="back" value="{{ here }}"><button class="check" title="Mark done">✓</button></form>
+        <span>{% if l.mine %}<span class="badge">you owe</span>{% else %}<span class="badge theirs">they owe</span>{% endif %} {{ l.description }}{% if l.due_at %} <span class="muted">· due {{ l.due_at | rel }}</span>{% endif %}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">Nothing open.</p>{% endif %}
+    <form method="post" action="{{ here }}/loop" class="inline">
+      <select name="owner"><option value="me">I owe</option><option value="them">They owe</option></select>
+      <input name="text" placeholder="e.g. send the report" required>
+      <input name="due" type="date">
+      <button class="btn sm">Add</button>
+    </form>
+    {% if done_loops %}<details class="small"><summary class="muted">Done ({{ done_loops | length }})</summary><ul class="plain">{% for l in done_loops %}<li class="muted">✓ {{ l.description }}</li>{% endfor %}</ul></details>{% endif %}
+  </section>
+  {% endif %}
+
+  <section class="card">
+    <h2>Timeline</h2>
+    {% if events %}<ul class="events">{% for ev in events %}{{ event_row(ev, exclude=e.id) }}{% endfor %}</ul>
+    {% else %}<p class="muted">No events yet.</p>{% endif %}
+  </section>
+
+  {% if e.type_id == 'person' and not is_ego %}
+  <section class="card">
+    <h2>Relationship settings</h2>
+    <form method="post" action="{{ here }}/profile" class="form compact">
+      <div class="row3">
+        <label>Tier <select name="tier">{% for t in TIERS %}<option value="{{ t }}" {{ 'selected' if (profile.tier if profile else 'active') == t }}>{{ t }} ({{ TIER_CADENCE[t] }}d)</option>{% endfor %}</select></label>
+        <label>Custom cadence <input name="cadence_days" type="number" min="1" value="{{ profile.cadence_days or '' if profile }}" placeholder="days"></label>
+        <label>Closeness 1–5 <input name="closeness_self" type="number" min="1" max="5" value="{{ profile.closeness_self or '' if profile }}"></label>
+      </div>
+      <div class="row2">
+        <label>How you met <input name="how_met" value="{{ profile.how_met or '' if profile }}"></label>
+        <label>Introduced by {{ picker('introduced_by', type='person', create='person', placeholder='Person…', preset=([{'id': profile.introduced_by, 'name': profile.introduced_by_name}] if profile and profile.introduced_by else [])) }}</label>
+      </div>
+      <button class="btn sm">{{ 'Save' if e.engagement == 'contact' else 'Track as contact' }}</button>
+    </form>
+  </section>
+  {% endif %}
+
+  <section class="card">
+    <details>
+      <summary><h2 class="inline-h">Edit details</h2></summary>
+      <form method="post" action="{{ here }}/edit" class="form compact">
+        <label>Name <input name="name" value="{{ e.display_name }}" required></label>
+        {% if not is_ego %}
+        <label>Engagement <select name="engagement">{% for g in ENGAGEMENTS %}<option {{ 'selected' if e.engagement == g }}>{{ g }}</option>{% endfor %}</select></label>
+        {% endif %}
+        <label>Other names <input name="aliases" value="{{ aliases | join(', ') }}"></label>
+        <label>Tags <input name="tags" value="{{ tags | join(', ') }}"></label>
+        <button class="btn sm">Save</button>
+      </form>
+      {% if not is_ego %}
+      <form method="post" action="{{ here }}/archive" onsubmit="return confirm('Archive {{ e.display_name }}? It will be hidden but kept.')"><button class="btn sm danger">Archive</button></form>
+      {% endif %}
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>History</h2>
+    {% if history is none %}
+    <a href="{{ here }}?history=1#history">Show every recorded change</a>
+    {% else %}
+    <ul class="history" id="history">
+      {% for h in history %}
+      <li class="st-{{ h.status }}">
+        <span class="muted small">{{ h.recorded_at | day }}</span>
+        {{ h.subject_name }} · {{ h.predicate_label }} · {{ h.value_text or h.object_name }}
+        {% if h.valid_to %}<span class="muted">(until {{ h.valid_to }})</span>{% endif %}
+        <span class="badge st-{{ h.status }}">{{ h.status }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </section>
+</div>
+</div>
+{% endblock %}

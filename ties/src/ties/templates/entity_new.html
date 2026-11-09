@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% from "macros.html" import picker %}
+{% block title %}Add {{ TYPE_LABELS[type_id] }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Add</h1>
+  <nav class="tabs">
+    {% for k, label in TYPE_LABELS.items() %}<a href="/new?type={{ k }}" class="{{ 'on' if type_id == k }}">{{ label }}</a>{% endfor %}
+  </nav>
+</div>
+
+<form method="post" action="/new" class="card form">
+  <input type="hidden" name="type_id" value="{{ type_id }}">
+  <label>Name
+    <input name="name" id="name" value="{{ v.get('name', name) or name }}" required autofocus data-dupcheck="{{ type_id }}">
+  </label>
+  <div id="dup-hint" class="dup-hint" hidden></div>
+
+  {% if type_id == 'person' %}
+  <fieldset class="row3">
+    <label>Engagement
+      <select name="engagement" data-toggle="contact-fields">
+        {% for g in ENGAGEMENTS %}<option value="{{ g }}" {{ 'selected' if v.get('engagement') == g }}>{{ g }}</option>{% endfor %}
+      </select>
+      <small>Contacts get a cadence and appear on Today.</small>
+    </label>
+    <label>Title / role <input name="title" value="{{ v.get('title', '') }}"></label>
+    <label>Birthday <input name="birthday" type="date" value="{{ v.get('birthday', '') }}"></label>
+  </fieldset>
+
+  <fieldset class="row2">
+    <label>Works at {{ picker('employed_by', type='organization', create='organization', placeholder='Organization…') }}</label>
+    <label>Lives in {{ picker('lives_in', type='place', create='place', placeholder='City or place…') }}</label>
+  </fieldset>
+
+  <fieldset id="contact-fields" class="row3 boxed">
+    <legend>Relationship</legend>
+    <label>Tier
+      <select name="tier">
+        {% for t in TIERS %}<option value="{{ t }}" {{ 'selected' if (v.get('tier') or 'active') == t }}>{{ t }} (every {{ TIER_CADENCE[t] }} days)</option>{% endfor %}
+      </select>
+    </label>
+    <label>Custom cadence (days) <input name="cadence_days" type="number" min="1" value="{{ v.get('cadence_days', '') }}" placeholder="use tier default"></label>
+    <label>Closeness (1–5) <input name="closeness_self" type="number" min="1" max="5" value="{{ v.get('closeness_self', '') }}"></label>
+    <label>How you met <input name="how_met" value="{{ v.get('how_met', '') }}" placeholder="e.g. 2019 fintech summit"></label>
+    <label>Introduced by {{ picker('introduced_by', type='person', create='person', placeholder='Person…') }}</label>
+  </fieldset>
+
+  <fieldset class="row3">
+    <label>Email <input name="email" type="email" value="{{ v.get('email', '') }}"></label>
+    <label>Phone <input name="phone" value="{{ v.get('phone', '') }}"></label>
+    <label>Link <input name="url" value="{{ v.get('url', '') }}" placeholder="profile or website"></label>
+  </fieldset>
+  {% else %}
+  <input type="hidden" name="engagement" value="reference">
+  <fieldset class="row2">
+    <label>Located in {{ picker('located_in', type='place', create='place', placeholder='City or place…') }}</label>
+    <label>Website <input name="url" value="{{ v.get('url', '') }}"></label>
+  </fieldset>
+  {% endif %}
+
+  <fieldset class="row2">
+    <label>Other names <input name="aliases" value="{{ v.get('aliases', '') }}" placeholder="comma-separated: nicknames, maiden name…"></label>
+    <label>Tags <input name="tags" value="{{ v.get('tags', '') }}" placeholder="e.g. context:college, topic:climate"></label>
+  </fieldset>
+  <label>Description <textarea name="description" rows="3">{{ v.get('description', '') }}</textarea></label>
+
+  <div class="form-actions"><button class="btn primary">Save</button></div>
+</form>
+{% endblock %}

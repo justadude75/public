@@ -1,0 +1,35 @@
+{# Autocomplete picker. Emits hidden inputs named `name` holding an entity id or new:<type>:<name>. #}
+{% macro picker(name, multi=false, type='', create='person', placeholder='Type a name…', preset=[]) -%}
+<div class="ac" data-name="{{ name }}" data-multi="{{ 1 if multi else 0 }}" data-type="{{ type }}" data-create="{{ create }}">
+  <div class="ac-chips">
+    {%- for p in preset %}<span class="chip">{{ p.name }}<input type="hidden" name="{{ name }}" value="{{ p.id }}"><button type="button" class="x" aria-label="Remove">×</button></span>{% endfor -%}
+  </div>
+  <input type="text" class="ac-input" placeholder="{{ placeholder }}" autocomplete="off" {% if not multi and preset %}hidden{% endif %}>
+  <ul class="ac-list" role="listbox" hidden></ul>
+</div>
+{%- endmacro %}
+
+{% macro basis_badge(b) -%}
+<span class="badge basis-{{ b }}" title="How you know this">{{ b }}</span>
+{%- endmacro %}
+
+{% macro tag_list(tags) -%}
+{% for t in tags %}<a class="tag" href="/people?tag={{ t | urlencode }}">{{ t }}</a>{% endfor %}
+{%- endmacro %}
+
+{% macro event_row(ev, show_people=true, exclude=none) -%}
+{%- set shown = [] -%}
+{%- for p in ev.people if p.id != exclude and p.display_name not in ev.title -%}{%- set _ = shown.append(p) -%}{%- endfor -%}
+<li class="ev ev-{{ ev.status }}">
+  <span class="ev-date">{{ ev.start_at | day }}</span>
+  <span class="ev-main">
+    <a href="/event/{{ ev.id }}">{{ ev.title }}</a>
+    {% if ev.status != 'occurred' %}<span class="badge st-{{ ev.status }}">{{ ev.status }}</span>{% endif %}
+    {% if not ev.counts_as_contact %}<span class="badge muted" title="Does not count as contact">no contact</span>{% endif %}
+    {% if show_people and shown %}<span class="muted"> · {% for p in shown %}<a href="/e/{{ p.id }}">{{ p.display_name }}</a>{{ ", " if not loop.last }}{% endfor %}</span>{% endif %}
+    {% if ev.location_name %}<span class="muted"> · {{ ev.location_name }}</span>{% endif %}
+    {% for t in ev.tags %}<span class="tag">{{ t }}</span>{% endfor %}
+    {% if ev.notes %}<span class="ev-notes">{{ ev.notes | truncate(220) }}</span>{% endif %}
+  </span>
+</li>
+{%- endmacro %}

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% from "macros.html" import event_row %}
+{% block title %}Timeline{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Timeline</h1>
+  <form class="filters" method="get">
+    <select name="kind"><option value="">All kinds</option>{% for k in EVENT_KINDS %}<option value="{{ k }}" {{ 'selected' if f.kind == k }}>{{ k.replace('_', ' ') }}</option>{% endfor %}</select>
+    <select name="status"><option value="">Any status</option>{% for s in EVENT_STATUSES %}<option {{ 'selected' if f.status == s }}>{{ s }}</option>{% endfor %}</select>
+    <input name="tag" value="{{ f.tag }}" placeholder="tag">
+    <button class="btn">Apply</button>
+  </form>
+</div>
+{% if future %}
+<section class="card">
+  <h2>Planned</h2>
+  <ul class="events">{% for ev in future %}{{ event_row(ev) }}{% endfor %}</ul>
+</section>
+{% endif %}
+<section class="card">
+  <h2>Past</h2>
+  {% if past %}<ul class="events">{% for ev in past %}{{ event_row(ev) }}{% endfor %}</ul>
+  {% else %}<p class="muted">Nothing logged yet. <a href="/log">Log an interaction</a>.</p>{% endif %}
+</section>
+{% endblock %}

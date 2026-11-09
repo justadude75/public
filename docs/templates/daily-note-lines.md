@@ -4,4 +4,4 @@
 - video:: [[ ]] 
 - message:: [[ ]] 
 - email:: [[ ]] 
-- [ ] Follow up with [[ ]] 📅 
+- [ ] Follow up with [[ ]] due:: 

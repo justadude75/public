@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% from "macros.html" import picker %}
+{% block title %}{{ 'Schedule' if status == 'planned' else 'Log interaction' }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>{{ 'Schedule' if status == 'planned' else 'Log an interaction' }}</h1>
+  <nav class="tabs">
+    <a href="/log?{% for p in preset %}with={{ p.id }}&{% endfor %}" class="{{ 'on' if status != 'planned' }}">It happened</a>
+    <a href="/log?status=planned&{% for p in preset %}with={{ p.id }}&{% endfor %}" class="{{ 'on' if status == 'planned' }}">Plan ahead</a>
+  </nav>
+</div>
+
+<form method="post" action="/log" class="card form">
+  <input type="hidden" name="status" value="{{ status }}">
+  <label>With {{ picker('participants', multi=true, type='person', create='person', placeholder='Add people…', preset=preset) }}</label>
+
+  <fieldset class="row4">
+    <label>Date <input type="date" name="date" value="{{ default_day }}" required></label>
+    <label>Time <input type="time" name="time"></label>
+    <label>Kind
+      <select name="kind" data-kind>
+        {% for k in EVENT_KINDS %}<option value="{{ k }}">{{ k.replace('_', ' ') }}</option>{% endfor %}
+      </select></label>
+    <label>Channel
+      <select name="channel" data-channel>
+        {% for c in CHANNELS %}<option value="{{ c }}">{{ c.replace('_', ' ') }}</option>{% endfor %}
+      </select></label>
+  </fieldset>
+
+  <fieldset class="row2">
+    <label>Title <input name="title" placeholder="optional, e.g. Coffee at Blue Bottle"></label>
+    <label>Where {{ picker('location', type='place', create='place', placeholder='Place…') }}</label>
+  </fieldset>
+
+  <label>Notes
+    <textarea name="notes" rows="6" placeholder="What did you talk about? What did you learn? Facts you want to keep can be added on their profile."></textarea>
+  </label>
+
+  <fieldset class="boxed">
+    <legend>Follow-ups</legend>
+    <div class="fu-rows" data-fu-rows>
+      <div class="fu-row">
+        <select name="fu_owner"><option value="me">I owe</option><option value="them">They owe</option></select>
+        <input name="fu_text" placeholder="e.g. intro to Raj">
+        <input name="fu_due" type="date">
+      </div>
+    </div>
+    <button type="button" class="btn sm" data-fu-add>+ another</button>
+  </fieldset>
+
+  <fieldset class="row3">
+    <label>Who reached out?
+      <select name="initiated_by">
+        <option value="">not sure</option>
+        <option value="me">I did</option>
+        <option value="them">They did</option>
+      </select></label>
+    <label>Tags <input name="tags" placeholder="e.g. topic:climate, context:work"></label>
+    <div class="checks">
+      <label class="check-label"><input type="checkbox" name="counts_as_contact" value="1" checked> Counts as being in touch</label>
+      <label class="check-label"><input type="checkbox" name="not_me" value="1"> I wasn't there (record only)</label>
+    </div>
+  </fieldset>
+
+  <div class="form-actions"><button class="btn primary">{{ 'Schedule' if status == 'planned' else 'Save' }}</button></div>
+</form>
+{% endblock %}

@@ -1,6 +1,6 @@
 # Personal Graph & Entity Resolution: Conceptual Plan
 
-**Status:** Draft v0.2 · 2026-11-09 (updated with your decisions: local only, single user, manual entry first, local AI, personal first)
+**Status:** Draft v0.3 · 2026-11-09 (updated with your decisions; the Phase 0 baseline is built in [`ties/`](../ties/))
 **Scope:** Data model, entity resolution, relationship engine, semantic layer, research vault, a simple frontend, and a phased roadmap.
 
 ---
@@ -26,7 +26,7 @@
 | Priority | **Personal first** | The research vault moves to the last phase. The schema keeps the vault concept so research can be added without migration (section 13). |
 | Hardware for local AI | **No specific hardware**; assume a typical current laptop | Any local runtime that offers an OpenAI-compatible endpoint can be plugged in. If no model is available, the app still works without AI (section 12.2). |
 | App shell | **Browser tab** | No desktop wrapper. The app is served on localhost. |
-| Input surfaces | **Not tied to one surface.** Mainly direct input in the app, or Obsidian-style templated Markdown notes. | Templates and the rules for reading them are specified, and the in-app forms use the same structure (section 4.11, Appendix C). |
+| Input surfaces | **Not tied to one surface.** The app is the main way in. Obsidian-style Markdown is an additional way in, not the primary one. No Obsidian plugins are assumed. | Templates are plain Markdown and readable without plugins. The in-app forms use the same structure (section 4.11, Appendix C). |
 | What to capture | **Post-meeting follow-ups; entity information (links, facts, related connections, inferences); relations across the network** | Post-meeting flow (section 4.12), inferences as a separate kind of fact (section 4.3), and a per-entity link library |
 | Default contact intervals | **Confirmed** (14, 30, 60, 120 and 365 days by tier) | None |
 
@@ -322,7 +322,7 @@ Every import runs through the same pipeline:
 5. **Re-import safely:** running the same import again is idempotent (external key plus content hash). Only changes come through, as new claims that supersede the old ones. Imports never overwrite facts you entered by hand. Conflicts go to the review inbox.
 
 **Formats to support first:**
-- **Markdown folders** using the templates in section 4.11 (Obsidian-style). This is the main input path besides the app itself.
+- **Markdown folders** using the templates in section 4.11 (Obsidian-style). This is a secondary input path; the app itself comes first.
 - **vCard** (`.vcf`) for contacts and **iCalendar** (`.ics`) for events.
 - **CSV** with a saved column mapping.
 - The system's own **JSON** interchange format, also used for backup and export.
@@ -341,10 +341,10 @@ The in-app forms and the Markdown templates describe **the same structure**, so 
 | Note title and `aliases:` | Display name and other names |
 | Frontmatter keys (`employer`, `city`, `email`, `birthday`, ...) | Claims or identifiers, mapped through the predicate registry |
 | `[[Wikilinks]]` | References to entities, resolved by title or alias |
-| Inline fields `predicate:: value` (Dataview convention) | Claims. The subject is the note itself, unless the line starts with a `[[Wikilink]]`. |
+| Inline fields `predicate:: value` (plain text; also matches the Dataview plugin's syntax if you ever use it) | Claims. The subject is the note itself, unless the line starts with a `[[Wikilink]]`. |
 | A trailing `{from: 2018, to: 2021, confidence: 0.6, basis: told}` | Valid time, confidence, basis and other qualifiers |
 | An `## Inferences` section | Claims with basis `inferred` |
-| Tasks `- [ ] ... 📅 2026-11-14` (Tasks-plugin convention) | Commitments with due dates. `[x]` marks one done. |
+| Checkbox tasks `- [ ] ... due:: 2026-11-14` | Commitments with due dates. `[x]` marks one done. A `📅 date` written the way the Tasks plugin does is also accepted. |
 | Daily-note lines such as `- call:: [[Dev Patel]] ...` | Interaction events that count as contact |
 | Free-text sections (Summary, Notes) | Sources for search, and optionally for extraction by the local model |
 
@@ -614,7 +614,7 @@ Chosen for a local-only, single-user tool that should feel like an app, not a se
 | Graph analytics | In-process **igraph** or **NetworkX** projections for centrality, communities and paths | No second database to keep in sync |
 | Entity resolution | In-app incremental matching (`rapidfuzz` for string similarity, `jellyfish` for phonetic keys, nickname tables). **Splink** (on DuckDB, also local) later for research-scale batch jobs. | Fast checks at entry time; explainable batch linkage later |
 | Backend | **Python + FastAPI** bound to `127.0.0.1` only, with an in-process background worker for extraction, scoring and triggers | Matches your existing Python work; nothing exposed to the network |
-| Frontend | **React (Vite) or SvelteKit**, served on localhost and used in a **browser tab**. Cytoscape.js for graphs, vis-timeline for timelines. | Simple and well supported; no desktop wrapper needed |
+| Frontend | Served on localhost and used in a **browser tab**. **Phase 0 as built:** server-rendered Jinja2 pages plus a small amount of plain JavaScript, with no build step and no external assets. Cytoscape.js will be bundled locally when the graph view arrives, with a component framework only if the views outgrow this. | Nothing to compile; works offline; easy to change |
 | Local AI | **Model-agnostic.** The app talks to any **OpenAI-compatible endpoint** on localhost (Ollama, llama.cpp server, LM Studio and others all provide one). Configure one URL and model name for chat and one for embeddings. Use structured JSON output against schemas. | Not tied to any hardware or runtime; notes never leave the machine |
 | Outside AI | Optional, off by default, only through the privacy gateway (section 12.3) | Lets a larger model help with strategy without seeing personal details |
 | Analytics | DuckDB reading the SQLite file directly, for heavy semantic or statistical analysis | Fast local analysis at scale |
@@ -704,7 +704,7 @@ Example of what actually leaves the machine:
 
 | Phase | Deliverable | Contents |
 |---|---|---|
-| **0: Foundation** | Personal MVP you use daily | Encrypted SQLite vault; schema (sources, entities, identifiers, names, claims, events, participation, tags, relationship profiles); forms for entities, events and relationships with resolve-as-you-type autocomplete; profile page; Today view with days since contact, cadence and next due; timeline; JSON export and backup |
+| **0: Foundation** ✅ built (`ties/`) | Personal MVP you use daily | Encrypted SQLite vault; schema (sources, entities, identifiers, names, claims, events, participation, tags, relationship profiles); forms for entities, events and relationships with resolve-as-you-type autocomplete; profile page; Today view with days since contact, cadence and next due; timeline; JSON export and backup |
 | **1: Capture and memory** | Notes become structure | Post-meeting flow (section 4.12); Markdown templates and folder import, read by fixed rules with no AI needed (Appendix C); commitments (open loops); per-entity link library; inferences with confirm and reject; rule-based inferences; review inbox; quick-capture box parsed by the local model into proposed claims; FTS5 and local embeddings; hybrid search; "memory" summaries; "changed since last contact" |
 | **2: Importers, resolution and triggers** | Data from elsewhere, kept clean | Importer contract with vCard, iCal, CSV and JSON importers, dry-run diff and batch rollback; background duplicate resolution (merge, split, not-the-same, undo); trigger engine (recurring dates, calendar offsets, fact changes, commitments); pre-meeting briefs; graph explorer |
 | **3: Strategic** | Leverage beyond human capacity | Goals; warm-introduction paths; brokerage and introduction suggestions; asks and offers matching; weekly review; local MCP server; privacy gateway for optional outside reasoning |
@@ -716,11 +716,19 @@ Example of what actually leaves the machine:
 
 ## 14. Remaining questions
 
-All earlier questions are answered (section 0.1). Three small ones remain, and none blocks Phase 0:
+All earlier questions are answered (section 0.1). Two open choices remain. Neither is needed until Phase 1, and both have a safe default.
 
-1. **Obsidian plugins.** Do you already use Dataview and Tasks? The templates follow their conventions (`key:: value` fields and `📅` due dates), so they render in Obsidian with no changes. If you use other conventions, the parser's key map can be adjusted.
-2. **Optional write-backs.** Do you want either of the opt-in features from section 4.11: a `gid` written into note frontmatter so links survive renames, or a generated read-only `_graph/` folder of profiles inside your notes vault?
-3. **Inference rules.** Which rule-based inferences from section 4.3 should be on by default? Shared small events, overlapping time at an organization, the same school and year, a shared connector, or all of them?
+1. **Optional Markdown write-backs** (section 4.11). The default is both **off**.
+   - **A `gid` line in each note's properties.** The importer recognizes a note by its file path. If you rename or move a note, the importer treats it as a new note: the old note's facts look removed, and the renamed note is offered as a possible duplicate. With this option on, the importer writes one line (`gid: …`) into the note's properties the first time it reads it, and recognizes the note by that ID from then on. The cost is that the app edits your files, though only that one line. Recommended: **turn on** once you import notes regularly.
+   - **A generated `_graph/` folder.** The app writes read-only Markdown pages into your notes folder: one per contact (summary, current facts, last contact, next due, open follow-ups) and a `Today.md`. This lets you see and link to app data from inside Obsidian. The cost is that the data is copied out of the encrypted vault into plain-text files, and those files get overwritten on every sync. Recommended: **leave off** unless you want Obsidian as a second viewer.
+2. **Which rule-based inferences to enable** (section 4.3). Inferences are only *suggestions*. They appear in their own section of a profile and as dashed edges in the graph, and you confirm or reject each one. A rejection is remembered, so the same suggestion never comes back. Proposed defaults:
+
+   | Rule | Example | Default |
+   |---|---|---|
+   | Shared small events | Ana and Ben were both at two dinners of 8 people or fewer, so they "likely know each other" | **On** |
+   | Shared connector | Mia introduced you to both Sarah and Raj, so Sarah and Raj share a connector (shown as a possible intro path, not as "knows") | **On** |
+   | Overlapping time at an organization | Dev and Sarah were both at Paybridge in 2018–2021, so "likely worked together". Only applies when the organization is marked small (under about 50 people) or the same team is recorded. Otherwise it is too noisy. | **On, small organizations only** |
+   | Same school and year | Both studied at the same university and graduated the same year | **Off.** Large schools make this mostly wrong. Turn it on per school if useful. |
 
 ---
 
@@ -995,7 +1003,7 @@ Next time you open Sarah's profile, the summary already says she is moving to a 
 
 ## Appendix C: Markdown templates and parsing rules
 
-Blank templates ready to drop into an Obsidian templates folder are in [`docs/templates/`](templates/): `person.md`, `organization.md`, `meeting.md` and `daily-note-lines.md`. They use the core Templates plugin placeholders (`{{title}}`, `{{date}}`, `{{time}}`) and follow the Dataview (`key:: value`) and Tasks (`📅 date`) conventions, so they render well in Obsidian with or without those plugins.
+Blank templates ready to drop into an Obsidian templates folder are in [`docs/templates/`](templates/): `person.md`, `organization.md`, `meeting.md` and `daily-note-lines.md`. They are plain Markdown, so no plugins are needed. They use the placeholders of Obsidian's built-in Templates feature (`{{title}}`, `{{date}}`, `{{time}}`). The `key:: value` lines also match the Dataview plugin's syntax, in case you ever add it.
 
 ### C.1 Filled example: person note
 
@@ -1062,9 +1070,9 @@ Caught up on her move out of Stripe. She's excited but nervous about early-stage
 - [[Voltgrid]] industry:: grid storage
 
 ## Follow-ups
-- [ ] Intro [[Sarah Chen]] to [[Raj Mehta]] 📅 2026-11-14
-- [ ] Send her the grid storage report 📅 2026-11-12
-- [ ] [[Sarah Chen]]: send me the Voltgrid deck for feedback 📅 2026-11-20
+- [ ] Intro [[Sarah Chen]] to [[Raj Mehta]] due:: 2026-11-14
+- [ ] Send her the grid storage report due:: 2026-11-12
+- [ ] [[Sarah Chen]]: send me the Voltgrid deck for feedback due:: 2026-11-20
 
 ## People mentioned
 - [[Priya Nair]] {basis: told}
@@ -1086,7 +1094,7 @@ For quick logging inside a daily note, without a separate meeting note:
 - 14:00 call:: [[Dev Patel]] catching up on his move to Denver {tags: topic/climate}
 - message:: [[Alex Kim]] wished happy birthday
 - met:: [[Raj Mehta]], [[Mia Lopez]] dinner at [[Nopa]]
-- [ ] Send [[Dev Patel]] the Denver intro list 📅 2026-11-16
+- [ ] Send [[Dev Patel]] the Denver intro list due:: 2026-11-16
 ```
 
 The interaction keys `met::`, `call::`, `video::`, `message::` and `email::` each create an occurred event on that channel with the note's date. The event counts as contact for every linked person on the line.
@@ -1111,7 +1119,7 @@ The interaction keys `met::`, `call::`, `video::`, `message::` and `email::` eac
 9. **Tasks become commitments.**
    - A task is your own commitment by default.
    - A task beginning with `[[Person]]:` is that person's commitment to you.
-   - The due date comes from `📅 YYYY-MM-DD` or `due:: YYYY-MM-DD`. A checked box marks the commitment done.
+   - The due date comes from `due:: YYYY-MM-DD` (or a Tasks-plugin style `📅 YYYY-MM-DD`). A checked box marks the commitment done.
 10. **Meeting notes.**
     - `attendees`, `date`, `time`, `status`, `channel`, `location` and `initiated_by` become the event and its participants.
     - `next_contact` overrides `next_due` for every attendee.

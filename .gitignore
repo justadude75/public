@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+*.vault
+*.vault-wal
+*.vault-shm
+financial_data.csv
+*_detailed.csv
