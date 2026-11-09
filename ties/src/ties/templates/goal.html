@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "macros.html" import picker %}
+{% block title %}{{ d.goal.title }}{% endblock %}
+{% block content %}
+{% set g = d.goal %}
+<div class="page-head">
+  <div><h1>{{ g.title }}</h1><p class="muted">{{ g.status }}{% if g.horizon %} · by {{ g.horizon }}{% endif %}{% if g.keywords %} · {{ g.keywords }}{% endif %}</p></div>
+  <div class="actions">
+    {% for st in ['done', 'dropped', 'active'] if st != g.status %}
+    <form method="post" action="/goals/{{ g.id }}"><input type="hidden" name="action" value="{{ st }}"><button class="btn sm">Mark {{ st }}</button></form>
+    {% endfor %}
+    <a class="btn sm" href="/strategy?task=strategy&goal={{ g.id }}">Ask for a plan</a>
+  </div>
+</div>
+{% if g.description %}<p>{{ g.description }}</p>{% endif %}
+<div class="grid2">
+  <section class="card">
+    <h2>People for this goal</h2>
+    {% if g.links %}
+    <ul class="plain">
+      {% for l in g.links %}
+      <li>
+        <div class="row"><span><a href="/e/{{ l.target_id }}">{{ l.display_name }}</a>{% if l.role %} <span class="badge">{{ l.role }}</span>{% endif %}
+          {% if l.status %}<span class="muted small">· {{ (l.status.days_since ~ 'd since contact') if l.status.last_contact else 'never contacted' }}</span>{% endif %}</span>
+          <form method="post" action="/goals/{{ g.id }}"><input type="hidden" name="action" value="unlink"><input type="hidden" name="entity" value="{{ l.target_id }}"><button class="linkish" title="Remove">×</button></form></div>
+        {% if l.paths %}<div class="muted small">Reach via: {% for p in l.paths %}{{ p.hops | map(attribute='name') | join(' → ') }}{{ '; ' if not loop.last }}{% endfor %}</div>
+        {% elif l.paths is defined %}<div class="muted small">No path yet.</div>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">Link the people who matter for this goal.</p>{% endif %}
+    <form method="post" action="/goals/{{ g.id }}" class="form compact">
+      <input type="hidden" name="action" value="link">
+      <div class="row3">
+        <label>Person or organization {{ picker('entity', type='', create='person,organization', placeholder='Name…') }}</label>
+        <label>Role <input name="role" placeholder="target, advisor, connector…"></label>
+        <label>Importance <select name="relevance"><option value="1">high</option><option value="0.6">medium</option><option value="0.3">low</option></select></label>
+      </div>
+      <button class="btn sm primary">Link</button>
+    </form>
+  </section>
+  <section class="card">
+    <h2>Possibly relevant</h2>
+    <p class="muted small">From your facts and notes about “{{ g.keywords or g.title }}”.</p>
+    {% if d.suggestions %}
+    <ul class="plain">{% for e in d.suggestions %}
+      <li class="row"><span><a href="/e/{{ e.id }}">{{ e.display_name }}</a> <span class="muted small">{{ e.snippet }}</span></span>
+        <form method="post" action="/goals/{{ g.id }}"><input type="hidden" name="action" value="link"><input type="hidden" name="entity" value="{{ e.id }}"><input type="hidden" name="relevance" value="0.6"><button class="btn sm">Link</button></form></li>
+    {% endfor %}</ul>
+    {% else %}<p class="muted">Nothing found yet. Add topics to the goal or interests to people.</p>{% endif %}
+  </section>
+</div>
+{% endblock %}

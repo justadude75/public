@@ -148,9 +148,9 @@ def embed_pending(vault: Vault, ai, limit: int = 64) -> int:
 # ── search ──────────────────────────────────────────────────────────────────
 
 
-def _fts_query(q: str) -> str:
-    tokens = re.findall(r"\w+", q.lower())
-    return " ".join(f'"{t}"*' for t in tokens)
+def _fts_query(q: str, any_term: bool = False) -> str:
+    tokens = [t for t in re.findall(r"\w+", q.lower()) if not any_term or len(t) > 2]
+    return (" OR " if any_term else " ").join(f'"{t}"*' for t in tokens)
 
 
 def _source_owner(vault: Vault, source_id: str) -> dict | None:
@@ -164,12 +164,12 @@ def _source_owner(vault: Vault, source_id: str) -> dict | None:
                      (source_id,))
 
 
-def search(vault: Vault, q: str, ai=None, limit: int = 20) -> dict[str, Any]:
+def search(vault: Vault, q: str, ai=None, limit: int = 20, any_term: bool = False) -> dict[str, Any]:
     """Hybrid search: keyword (BM25) plus meaning (embeddings) when a model is configured.
 
     Results from the two methods are merged with reciprocal rank fusion.
     """
-    fq = _fts_query(q)
+    fq = _fts_query(q, any_term)
     if not fq:
         return {"entities": [], "notes": [], "semantic": False}
     ent_kw = vault.all(

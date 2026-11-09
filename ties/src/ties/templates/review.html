@@ -39,7 +39,7 @@
   <h1>Review</h1>
   <p class="muted">Suggestions wait here until you confirm or reject them. Nothing here counts as a fact yet.{% if added %} {{ added }} new suggestion{{ 's' if added != 1 }} just added.{% endif %}</p>
 </div>
-{% set total = groups.rule | length + groups.model | length + groups.other | length + disputed | length + dups | length %}
+{% set total = groups.rule | length + groups.model | length + groups.other | length + disputed | length + dups | length + proposed_loops | length %}
 {% if not total %}<section class="card"><p class="muted">All clear. Nothing to review.</p></section>{% endif %}
 
 {% if disputed %}
@@ -88,6 +88,22 @@
     {% for m in recent_merges %}
     <li class="row"><span>{{ m.drop.display_name if m.drop else '?' }} → <a href="/e/{{ m.keep.id }}">{{ m.keep.display_name }}</a> <span class="muted">{{ m.decided_at }}</span></span>
       {% if not m.reverted_by %}<form method="post" action="/merge/{{ m.id }}/undo"><button class="btn sm">Undo</button></form>{% else %}<span class="badge muted">undone</span>{% endif %}</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% if proposed_loops %}
+<section class="card">
+  <h2>Proposed follow-ups <span class="muted">({{ proposed_loops | length }})</span></h2>
+  <p class="muted small">Suggested by an agent.</p>
+  <ul class="review">
+    {% for l in proposed_loops %}
+    <li><span class="review-main">{{ 'You owe' if l.mine else 'They owe' }}: {{ l.description }} · <a href="/e/{{ l.other_id }}">{{ l.other_name }}</a>{% if l.due_at %} <span class="muted">due {{ l.due_at }}</span>{% endif %}</span>
+      <span class="inline-forms">
+        <form method="post" action="/loop/{{ l.id }}/accept"><button class="btn sm primary">Accept</button></form>
+        <form method="post" action="/loop/{{ l.id }}"><input type="hidden" name="status" value="dropped"><input type="hidden" name="back" value="/review"><button class="btn sm">Reject</button></form>
+      </span></li>
     {% endfor %}
   </ul>
 </section>

@@ -280,3 +280,5 @@ ol.paths { margin: 0; padding-left: 1.2rem; } ol.paths li { padding: .35rem 0; }
 .snooze { display: inline-flex; gap: .2rem; }
 .snooze button { font-size: .75rem; padding: .1rem .4rem; }
 @media print { .top, .foot, .banner, .actions { display: none !important; } .card { break-inside: avoid; } }
+pre.payload { max-height: 28rem; overflow: auto; background: var(--surface-2); padding: .75rem; border-radius: 8px; font-size: .78rem; white-space: pre-wrap; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }

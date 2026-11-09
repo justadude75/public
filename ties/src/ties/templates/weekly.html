@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% from "macros.html" import event_row %}
+{% block title %}Weekly review{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Weekly review</h1><p class="muted">{{ r.start.isoformat() }} – {{ r.today.isoformat() }}</p></div>
+  {% if ai_ready %}<form method="post" action="/weekly"><button class="btn">Summarize with local model</button></form>{% endif %}</div>
+{% if narrative %}<section class="card memory"><h2>Summary</h2><div class="notes">{{ narrative }}</div></section>{% endif %}
+<div class="grid2">
+<div>
+  <section class="card"><h2>This week: {{ r.events | length }} interaction{{ 's' if r.events | length != 1 }} with {{ r.people | length }} people</h2>
+    {% if r.events %}<ul class="events">{% for ev in r.events %}{{ event_row(ev) }}{% endfor %}</ul>{% else %}<p class="muted">None logged.</p>{% endif %}</section>
+  <section class="card"><h2>Follow-ups</h2>
+    <p>{{ r.opened | length }} opened · {{ r.closed | length }} closed · {{ r.loops_open }} open in total</p></section>
+  <section class="card"><h2>Learned this week</h2>
+    {% if r.new_facts %}<ul class="plain small">{% for f in r.new_facts %}<li><a href="/e/{{ f.subject_id }}">{{ f.subject_name }}</a> · {{ f.label }}: {{ f.value_text }}</li>{% endfor %}</ul>{% else %}<p class="muted">Nothing new recorded.</p>{% endif %}</section>
+</div>
+<div>
+  <section class="card"><h2>Slipped this week</h2>
+    {% if r.decaying %}<ul class="plain">{% for s in r.decaying %}<li><a href="/e/{{ s.entity_id }}">{{ s.name }}</a> <span class="muted small">became due {{ -s.days_to_due }}d ago</span></li>{% endfor %}</ul>{% else %}<p class="muted">Nothing slipped.</p>{% endif %}</section>
+  <section class="card"><h2>Next week</h2>
+    {% if r.next_week %}<ul class="events">{% for ev in r.next_week %}{{ event_row(ev) }}{% endfor %}</ul>{% else %}<p class="muted">Nothing planned.</p>{% endif %}
+    {% if r.suggested %}<h3>Suggested outreach</h3><ul class="plain">{% for s in r.suggested %}<li><a href="/e/{{ s.entity_id }}">{{ s.name }}</a> <span class="muted small">{{ s.reasons[0] }}</span></li>{% endfor %}</ul>{% endif %}</section>
+  {% if r.goals %}<section class="card"><h2>Goals</h2><ul class="plain">{% for g in r.goals %}<li><a href="/goals/{{ g.goal.id }}">{{ g.goal.title }}</a>: in touch with {{ g.touched | length }} of {{ g.linked }} linked people{% if g.touched %} ({{ g.touched | join(', ') }}){% endif %}</li>{% endfor %}</ul></section>{% endif %}
+</div>
+</div>
+{% endblock %}

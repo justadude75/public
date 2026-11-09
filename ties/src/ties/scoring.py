@@ -46,6 +46,7 @@ class ContactStatus:
     share_initiated_by_them: float | None = None
     ratio: float | None = None
     priority: float = 0.0
+    goal_relevance: float = 0.0
     is_due: bool = False
     reasons: list[str] = field(default_factory=list)
 
@@ -82,6 +83,12 @@ def compute_all(vault: Vault, today: date | None = None,
                    rp.next_contact_at, rp.next_contact_set_at
             from relationship_profile rp join entity e on e.id = rp.entity_id
             where e.status='active' and e.engagement='contact'{extra}""", params)
+    goal_rel: dict[str, float] = {}
+    if vault.one("select 1 from sqlite_master where name='goal_link'"):
+        for r in vault.all("select gl.target_id, max(gl.relevance) as rel from goal_link gl "
+                           "join goal g on g.id=gl.goal_id where g.status='active' "
+                           "and gl.target_kind='entity' group by gl.target_id"):
+            goal_rel[r["target_id"]] = float(r["rel"])
     by_entity: dict[str, list[dict]] = {}
     for row in _interactions(vault, ego):
         by_entity.setdefault(row["entity_id"], []).append(row)
@@ -168,7 +175,10 @@ def compute_all(vault: Vault, today: date | None = None,
                                   f"({st.days_since} since last contact, every {cadence})")
             else:
                 st.reasons.append(f"{st.days_since} days since last contact, every {cadence}")
-        importance = 0.4 * TIER_WEIGHT[tier] + 0.3 * st.strength
+        st.goal_relevance = goal_rel.get(c["id"], 0.0)
+        importance = 0.4 * TIER_WEIGHT[tier] + 0.3 * st.strength + 0.3 * st.goal_relevance
+        if st.goal_relevance:
+            st.reasons.append("Linked to an active goal")
         st.priority = urgency * importance
         if override_active:
             st.is_due = st.days_to_due <= round(cadence * (1 - DUE_RATIO)) and not st.covered

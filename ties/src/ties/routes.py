@@ -46,6 +46,7 @@ def register(app, vault, render, back, today_fn, entity_or_404) -> None:
         return render(request, "review.html", groups=groups,
                       disputed=repo.proposed_claims(vault, "disputed"),
                       added=sum(added.values()), rule_labels=inference.RULE_LABELS,
+                      proposed_loops=repo.commitments(vault, status="proposed"),
                       nav="review", **extra)
 
     @app.post("/claim/{claim_id}/confirm")

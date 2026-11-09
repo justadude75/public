@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Insights{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Insights</h1>
+  <div class="actions"><a class="btn" href="/weekly">Weekly review</a><a class="btn" href="/goals">Goals</a><a class="btn" href="/strategy">Ask for strategy</a></div></div>
+<p class="muted">{{ a.people }} people · {{ a.ties }} known ties between them.</p>
+<div class="grid2">
+<div>
+  <section class="card">
+    <h2>Introductions worth making</h2>
+    <p class="muted small">Someone is looking for what someone else offers (from “Looking for”, “Can offer”, interests and roles).</p>
+    {% if intros %}
+    <ul class="plain">
+      {% for i in intros[:15] %}
+      <li>
+        <div class="row"><span><a href="/e/{{ i.seeker.id }}">{{ i.seeker.name }}</a> ↔ <a href="/e/{{ i.offerer.id }}">{{ i.offerer.name }}</a>{% if i.already_connected %} <span class="badge muted">already connected</span>{% endif %}</span>
+          <span class="inline-forms">
+            <form method="post" action="/intro/{{ i.key }}/plan"><input type="hidden" name="need" value="{{ i.need }}"><button class="btn sm primary">Plan intro</button></form>
+            <form method="post" action="/intro/{{ i.key }}/dismiss"><button class="btn sm">Dismiss</button></form>
+          </span></div>
+        <div class="muted small">Needs: {{ i.need }} · Offers: {{ i.offer }}</div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="muted">Add “Looking for” and “Can offer” facts to people to get suggestions.</p>{% endif %}
+  </section>
+  <section class="card">
+    <h2>Active goals</h2>
+    {% if goals %}<ul class="plain">{% for g in goals %}<li><a href="/goals/{{ g.id }}">{{ g.title }}</a> <span class="muted small">{{ g.links | length }} people</span></li>{% endfor %}</ul>
+    {% else %}<p class="muted"><a href="/goals">Set a goal</a> to rank people by what you're working toward.</p>{% endif %}
+  </section>
+</div>
+<div>
+  <section class="card">
+    <h2>Bridges</h2>
+    <p class="muted small">People who connect groups that otherwise don't know each other. Keeping these ties warm gives you the widest reach.</p>
+    {% if a.brokers %}
+    <table class="list"><thead><tr><th>Person</th><th class="num">Groups</th><th class="num">Bridging</th><th class="num">Your tie</th></tr></thead><tbody>
+      {% for b in a.brokers %}<tr><td><a href="/e/{{ b.id }}">{{ b.name }}</a>{% if b.dormant %} <span class="badge muted">dormant</span>{% endif %}</td><td class="num">{{ b.bridges }}</td><td class="num">{{ (b.betweenness * 100) | round(1) }}</td><td class="num">{{ ((b.strength or 0) * 100) | round | int }}%</td></tr>{% endfor %}
+    </tbody></table>
+    {% else %}<p class="muted">Add how people know each other to see bridges.</p>{% endif %}
+  </section>
+  <section class="card">
+    <h2>Clusters</h2>
+    {% if a.groups %}
+    {% for g in a.groups %}<p><strong>{{ g.size }} people:</strong> {% for m in g.members %}<a href="/e/{{ m.id }}">{{ m.name }}</a>{{ ', ' if not loop.last }}{% endfor %}{% if g.size > g.members | length %} …{% endif %}</p>{% endfor %}
+    {% else %}<p class="muted">Not enough connections yet.</p>{% endif %}
+  </section>
+</div>
+</div>
+{% endblock %}

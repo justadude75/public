@@ -168,6 +168,16 @@ def cmd_import(args) -> None:
         print("  note:", w)
 
 
+def cmd_mcp(args) -> None:
+    from .mcp_server import serve_stdio
+
+    path = Path(args.vault).expanduser()
+    if is_encrypted(path) and not os.environ.get("TIES_PASSPHRASE"):
+        sys.exit("This vault is encrypted: set TIES_PASSPHRASE in the MCP client's environment.")
+    vault = open_vault(path)
+    serve_stdio(vault, agent=args.agent)
+
+
 def cmd_backup(args) -> None:
     vault = open_vault(Path(args.vault).expanduser())
     dest = vault.backup(Path(args.dest).expanduser())
@@ -213,7 +223,11 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--contacts", action="store_true", help="track imported people as contacts")
     p.set_defaults(func=cmd_import)
 
-    for name in ("serve", "demo", "export", "backup", "init", "restore", "import"):
+    p = sub.add_parser("mcp", help="run a local MCP server on stdin/stdout for agents")
+    p.add_argument("--agent", default="mcp", help="name recorded in the audit log")
+    p.set_defaults(func=cmd_mcp)
+
+    for name in ("serve", "demo", "export", "backup", "init", "restore", "import", "mcp"):
         sub.choices[name].add_argument("--vault", default=argparse.SUPPRESS,
                                        help="vault file")
     args = parser.parse_args(argv)

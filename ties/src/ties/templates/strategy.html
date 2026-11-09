@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Strategy{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Ask for strategy</h1>
+  <p class="muted">The question goes out with people as P1, P2…, no names, contact details, notes or sensitive facts. Check the exact text below before sending.</p></div></div>
+<form method="get" action="/strategy" class="filters" style="margin-bottom:1rem">
+  <select name="task">{% for k, v in tasks.items() %}<option value="{{ k }}" {{ 'selected' if k == task }}>{{ v }}</option>{% endfor %}</select>
+  <select name="goal"><option value="">No goal</option>{% for g in goals %}<option value="{{ g.id }}" {{ 'selected' if g.id == goal }}>{{ g.title }}</option>{% endfor %}</select>
+  <button class="btn">Prepare</button>
+</form>
+{% if result %}
+<section class="card memory">
+  <h2>Suggestions</h2>
+  {% if result.suggestions %}
+  <ul class="plain">{% for s in result.suggestions %}
+    <li><strong>{{ s.action }}</strong> {% for p in s.people %}<a href="/e/{{ p.id }}">{{ p.name }}</a>{{ ', ' if not loop.last }}{% endfor %}<div class="muted small">{{ s.why }}</div></li>
+  {% endfor %}</ul>
+  {% else %}<p class="muted">The model returned no usable suggestions.</p>{% endif %}
+</section>
+{% endif %}
+<div class="grid2">
+  <section class="card">
+    <h2>Exactly what would be sent</h2>
+    {% if payload %}
+    <pre class="payload">{{ payload_json }}</pre>
+    <form method="post" action="/strategy" class="inline-forms">
+      <input type="hidden" name="task" value="{{ task }}"><input type="hidden" name="goal" value="{{ goal }}"><input type="hidden" name="hash" value="{{ phash }}">
+      <button class="btn primary sm" name="where" value="local" {{ 'disabled' if not local_on }}>Ask my local model</button>
+      <button class="btn sm" name="where" value="outside" {{ 'disabled' if not outside_on }}>Send to outside model</button>
+    </form>
+    {% if not outside_on %}<p class="muted small">Outside requests are off. Turn them on in <a href="/settings">Settings</a>.</p>{% endif %}
+    {% else %}<p class="muted">Nothing to send.</p>{% endif %}
+  </section>
+  <section class="card">
+    <h2>Recent requests</h2>
+    {% if log %}<ul class="plain small">{% for l in log %}<li><span class="muted">{{ l.at }}</span> {{ l.detail.where }} · {{ l.detail.people }} people · hash {{ l.detail.payload_hash }}</li>{% endfor %}</ul>
+    {% else %}<p class="muted">Nothing has been sent.</p>{% endif %}
+  </section>
+</div>
+{% endblock %}

@@ -181,6 +181,10 @@ def create_app(vault: Vault, today_fn=date.today) -> FastAPI:
             memory=memory.get_summary(vault, entity_id, today_fn()),
             changes=memory.changed_since_last_contact(vault, entity_id, today_fn()),
             ai_ready=AIClient.from_vault(vault) is not None,
+            all_goals=__import__("ties.strategy", fromlist=["goals"]).goals(vault),
+            entity_goals=vault.all("select g.id, g.title, gl.role from goal_link gl join goal g "
+                                   "on g.id=gl.goal_id where gl.target_id=? and g.status='active'",
+                                   (entity_id,)),
         )
         return render(request, "entity.html", **ctx)
 

@@ -17,6 +17,8 @@
   <div class="actions">
     <a class="btn primary" href="/log?with={{ e.id }}">Log interaction</a>
     <a class="btn" href="/log?status=planned&with={{ e.id }}">Schedule</a>
+    {% if e.engagement != 'contact' %}<a class="btn" href="/graph?to={{ e.id }}">Ways to reach</a>{% endif %}
+    <a class="btn" href="/graph?center={{ e.id }}">Graph</a>
   </div>
   {% endif %}
 </div>
@@ -275,6 +277,21 @@
       {% endif %}
     </details>
   </section>
+
+  {% if not is_ego %}
+  <section class="card">
+    <h2>Goals</h2>
+    {% if entity_goals %}<ul class="plain">{% for g in entity_goals %}<li><a href="/goals/{{ g.id }}">{{ g.title }}</a>{% if g.role %} <span class="badge">{{ g.role }}</span>{% endif %}</li>{% endfor %}</ul>{% endif %}
+    {% if all_goals %}
+    <form method="post" class="inline" onsubmit="this.action='/goals/' + this.goal.value">
+      <input type="hidden" name="action" value="link"><input type="hidden" name="entity" value="{{ e.id }}"><input type="hidden" name="back" value="{{ here }}">
+      <select name="goal">{% for g in all_goals %}<option value="{{ g.id }}">{{ g.title }}</option>{% endfor %}</select>
+      <input name="role" placeholder="role (optional)">
+      <button class="btn sm">Link to goal</button>
+    </form>
+    {% else %}<p class="muted small"><a href="/goals">Create a goal</a> to rank people by what you're working toward.</p>{% endif %}
+  </section>
+  {% endif %}
 
   <section class="card">
     <h2>History</h2>

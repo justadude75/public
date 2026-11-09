@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Goals{% endblock %}
+{% block content %}
+<div class="page-head"><h1>Goals</h1>
+  <p class="muted">People linked to an active goal rank higher on Today, and each goal gets suggested people and introduction paths.</p></div>
+<div class="grid2">
+  <section class="card">
+    <h2>Your goals</h2>
+    {% if goals %}
+    <ul class="plain">{% for g in goals %}
+      <li class="row"><span><a href="/goals/{{ g.id }}">{{ g.title }}</a> <span class="muted small">{{ g.links | length }} people{% if g.horizon %} · by {{ g.horizon }}{% endif %}</span></span>
+        <span class="badge {{ 'st-planned' if g.status == 'active' else 'muted' }}">{{ g.status }}</span></li>
+    {% endfor %}</ul>
+    {% else %}<p class="muted">No goals yet.</p>{% endif %}
+  </section>
+  <section class="card">
+    <h2>New goal</h2>
+    <form method="post" action="/goals" class="form compact">
+      <label>Title <input name="title" placeholder="e.g. Move into climate investing" required></label>
+      <label>Topics that matter <input name="keywords" placeholder="e.g. climate, grid storage, venture"></label>
+      <label>By when <input type="date" name="horizon"></label>
+      <label>Notes <textarea name="description" rows="3"></textarea></label>
+      <button class="btn primary sm">Create</button>
+    </form>
+  </section>
+</div>
+{% endblock %}

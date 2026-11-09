@@ -21,6 +21,6 @@ Decisions in force:
 | 2 | Duplicate resolution: merge, not-the-same, undo | done |
 | 2 | Trigger engine: calendar offsets, fact changes, snooze and dismiss | done |
 | 2 | Pre-meeting briefs; graph explorer | done |
-| 3 | Goals; warm paths; brokerage; asks and offers; weekly review | todo |
-| 3 | Local MCP server; privacy gateway | todo |
+| 3 | Goals; warm paths; brokerage; asks and offers; weekly review | done |
+| 3 | Local MCP server; privacy gateway | done |
 | 4 | Research vault: sources, reliability grades, projects, as-of queries, contradictions, hypotheses, exports, bulk importers, batch ER | todo |
