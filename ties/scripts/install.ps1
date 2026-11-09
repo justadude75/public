@@ -21,7 +21,21 @@ $Ties = "$Here\.venv\Scripts\ties.exe"
 $Vault = if ($env:TIES_VAULT) { $env:TIES_VAULT } else { "$HOME\.ties\personal.vault" }
 
 $Launcher = "$([Environment]::GetFolderPath('Desktop'))\ties.bat"
-Set-Content -Path $Launcher -Value "@echo off`r`nrem Opens ties in your browser. Close this window to stop it.`r`n`"$Ties`" --vault `"$Vault`" serve --open"
+$LauncherText = @"
+@echo off
+setlocal
+rem Opens ties in your browser. Close this window to stop it.
+set "TIES=$Ties"
+set "VAULT=$Vault"
+if not exist "%VAULT%" (
+  echo No vault yet. Creating an encrypted one at "%VAULT%" - you'll choose a passphrase.
+  "%TIES%" --vault "%VAULT%" init --encrypt
+  if errorlevel 1 (pause & exit /b 1)
+)
+"%TIES%" --vault "%VAULT%" serve --open
+if not "%errorlevel%"=="0" pause
+"@
+Set-Content -Path $Launcher -Value (($LauncherText -split "`r?`n") -join "`r`n")
 Write-Host "Launcher: $Launcher (double-click it)"
 
 if (-not (Test-Path $Vault)) {

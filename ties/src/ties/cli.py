@@ -259,9 +259,45 @@ def cmd_link(args) -> None:
     print(f"{n} links saved. Nothing was copied between vaults.")
 
 
-def cmd_bench(args) -> None:
-    import resource
+def _peak_memory_mb() -> int | None:
+    """Peak resident memory of this process in MB, or None where it cannot be read."""
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
 
+        class _MemoryCounters(ctypes.Structure):
+            _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD),
+                        ("PeakWorkingSetSize", ctypes.c_size_t), ("WorkingSetSize", ctypes.c_size_t),
+                        ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                        ("PagefileUsage", ctypes.c_size_t), ("PeakPagefileUsage", ctypes.c_size_t)]
+
+        try:
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            psapi = ctypes.WinDLL("psapi", use_last_error=True)
+            kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+            psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(_MemoryCounters),
+                                                   wintypes.DWORD]
+            psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+            counters = _MemoryCounters()
+            counters.cb = ctypes.sizeof(_MemoryCounters)
+            ok = psapi.GetProcessMemoryInfo(kernel32.GetCurrentProcess(), ctypes.byref(counters),
+                                            counters.cb)
+        except (AttributeError, OSError):
+            return None
+        return counters.PeakWorkingSetSize // (1024 * 1024) if ok else None
+    try:
+        import resource  # Unix only
+    except ImportError:
+        return None
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    # ru_maxrss is kilobytes on Linux and bytes on macOS.
+    return peak // (1024 * 1024) if sys.platform == "darwin" else peak // 1024
+
+
+def cmd_bench(args) -> None:
     from . import bench
 
     path = Path(args.vault).expanduser()
@@ -272,7 +308,8 @@ def cmd_bench(args) -> None:
     print(f"Built: {info}")
     for name, ms in bench.run(vault, heavy=not args.light).items():
         print(f"  {name:40} {ms:7} ms")
-    print(f"Peak memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024} MB")
+    peak = _peak_memory_mb()
+    print(f"Peak memory: {peak} MB" if peak is not None else "Peak memory: not available on this platform")
 
 
 def cmd_backup(args) -> None:
