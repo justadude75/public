@@ -96,8 +96,19 @@ CHANNEL_WEIGHT = {"in_person": 1.0, "video": 0.8, "call": 0.7, "message": 0.3,
                   "email": 0.3, "social": 0.05}
 
 
+def _registry_hash() -> str:
+    import hashlib
+    return hashlib.sha1(json.dumps([ENTITY_TYPES, PREDICATES], default=str).encode()).hexdigest()
+
+
 def seed(vault) -> None:
+    """Write the built-in types and fields, only when they changed (writes invalidate caches)."""
+    current = _registry_hash()
+    if vault.get_meta("registry_hash") == current:
+        return
     with vault.tx() as c:
+        c.execute("insert into meta(key, value) values('registry_hash', ?) on conflict(key) "
+                  "do update set value=excluded.value", (current,))
         for tid, label in ENTITY_TYPES:
             c.execute(
                 "insert into entity_type(id, label) values(?,?) "

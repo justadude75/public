@@ -26,6 +26,12 @@ NODE_TYPES = ("person", "organization", "place")
 
 
 def _load(vault: Vault, include_inferred: bool, include_together: bool, today: date):
+    """Nodes and edges of the whole network. Cached until the vault changes."""
+    return vault.cached(("graph_load", include_inferred, include_together, today.isoformat()),
+                        lambda: _load_uncached(vault, include_inferred, include_together, today))
+
+
+def _load_uncached(vault: Vault, include_inferred: bool, include_together: bool, today: date):
     ego = vault.get_meta("ego_id")
     nodes = {r["id"]: r for r in vault.all(
         f"select id, display_name, type_id, engagement from entity where status='active' and "
@@ -106,7 +112,16 @@ def build(vault: Vault, center: str | None = None, depth: int = 2, include_infer
     else:
         connected = {e["source"] for e in edges} | {e["target"] for e in edges}
         keep = {n for n in keep if n in connected or nodes[n]["engagement"] == "contact"}
-    keep = set(list(keep)[:limit])
+    total = len(keep)
+    if len(keep) > limit:
+        # Keep the best-connected nodes (and the center), not an arbitrary subset.
+        degree: dict[str, int] = defaultdict(int)
+        for e in edges:
+            if e["source"] in keep and e["target"] in keep:
+                degree[e["source"]] += 1
+                degree[e["target"]] += 1
+        ranked = sorted(keep, key=lambda n: (n != center, -degree.get(n, 0)))
+        keep = set(ranked[:limit])
     out_nodes = []
     for nid in keep:
         n = nodes[nid]
@@ -116,7 +131,7 @@ def build(vault: Vault, center: str | None = None, depth: int = 2, include_infer
                           "strength": round(st.strength, 2) if st else 0,
                           "due": bool(st and st.is_due), "center": nid == center})
     out_edges = [e for e in edges if e["source"] in keep and e["target"] in keep]
-    return {"nodes": out_nodes, "edges": out_edges}
+    return {"nodes": out_nodes, "edges": out_edges, "total": total}
 
 
 # ── warm paths ───────────────────────────────────────────────────────────────
@@ -159,7 +174,7 @@ def warm_paths(vault: Vault, target: str, k: int = 3, today: date | None = None)
     """
     today = today or date.today()
     ego, nodes, edges, _ = _load(vault, include_inferred=True, include_together=True, today=today)
-    adj = _adjacency(edges)
+    adj = vault.cached(("adjacency", today.isoformat()), lambda: _adjacency(edges))
     people = {n for n, v in nodes.items() if v["type_id"] == "person"}
     results, banned = [], set()
     for _ in range(k):
@@ -184,39 +199,57 @@ def warm_paths(vault: Vault, target: str, k: int = 3, today: date | None = None)
 
 
 def _people_graph(vault: Vault, today: date):
+    """People plus the organizations they share, as one undirected graph.
+
+    Organizations stay as their own nodes (person - org - person) rather than linking
+    every pair of colleagues, which keeps the graph small for large employers.
+    """
     ego, nodes, edges, statuses = _load(vault, include_inferred=False, include_together=True,
                                         today=today)
     people = {n for n, v in nodes.items() if v["type_id"] == "person" and n != ego}
-    # Connect people who share an organization (a weak tie) so orgs act as bridges.
-    by_org = defaultdict(set)
-    person_edges = []
+    adj: dict[str, dict[str, float]] = defaultdict(dict)
+
+    def link(a, b, w):
+        adj[a][b] = max(adj[a].get(b, 0), w)
+        adj[b][a] = max(adj[b].get(a, 0), w)
+
     for e in edges:
         if e["kind"] == "ego":
             continue
         s, t = e["source"], e["target"]
         if s in people and t in people:
-            person_edges.append((s, t, e["weight"]))
-        elif e["kind"] in ("employed_by", "member_of", "studied_at"):
+            link(s, t, e["weight"])
+        elif e["kind"] in ("employed_by", "member_of", "studied_at", "affiliated_with"):
             p, o = (s, t) if s in people else (t, s)
-            if p in people:
-                by_org[o].add(p)
-    for org, members in by_org.items():
-        ms = sorted(members)
-        if len(ms) <= 30:
-            for i, a in enumerate(ms):
-                for b in ms[i + 1:]:
-                    person_edges.append((a, b, 0.2))
-    adj: dict[str, dict[str, float]] = defaultdict(dict)
-    for a, b, w in person_edges:
-        adj[a][b] = max(adj[a].get(b, 0), w)
-        adj[b][a] = max(adj[b].get(a, 0), w)
+            if p in people and o in nodes:
+                link(p, o, 0.2)
     return ego, nodes, people, adj, statuses
 
 
-def betweenness(adj: dict[str, dict[str, float]], nodes: set[str]) -> dict[str, float]:
-    """Brandes' algorithm on the unweighted graph (who sits on many shortest paths)."""
+EXACT_LIMIT = 600      # above this many nodes, betweenness is estimated from a sample
+SAMPLE_SOURCES = 120
+
+
+def betweenness(adj: dict[str, dict[str, float]], nodes: set[str],
+                samples: int | None = None, seed: int = 11) -> dict[str, float]:
+    """Brandes' algorithm on the unweighted graph (who sits on many shortest paths).
+
+    Exact for small networks. For large ones it runs from a random sample of source
+    nodes and scales up (Brandes & Pich 2007), which keeps the ranking of the top
+    bridges stable at a fraction of the cost.
+    """
     bc = dict.fromkeys(nodes, 0.0)
-    for s in nodes:
+    sources = sorted(nodes)
+    if samples is None:
+        if len(nodes) <= EXACT_LIMIT:
+            samples = len(nodes)
+        else:
+            # keep total work near a few million edge visits, whatever the size
+            n_edges = sum(len(v) for v in adj.values()) or 1
+            samples = max(24, min(SAMPLE_SOURCES, 3_000_000 // n_edges))
+    if samples < len(sources):
+        sources = random.Random(seed).sample(sources, samples)
+    for s in sources:
         stack, preds = [], defaultdict(list)
         sigma = dict.fromkeys(nodes, 0.0)
         sigma[s] = 1.0
@@ -244,6 +277,7 @@ def betweenness(adj: dict[str, dict[str, float]], nodes: set[str]) -> dict[str, 
                 bc[w] += delta[w]
     n = len(nodes)
     scale = 1 / ((n - 1) * (n - 2)) if n > 2 else 1
+    scale *= len(nodes) / max(len(sources), 1)
     return {k: v * scale for k, v in bc.items()}
 
 
@@ -273,13 +307,20 @@ def communities(adj: dict[str, dict[str, float]], nodes: set[str], seed: int = 7
 
 
 def analytics(vault: Vault, today: date | None = None) -> dict:
+    """Bridges and clusters. Cached until the vault changes."""
     today = today or date.today()
+    return vault.cached(("analytics", today.isoformat()), lambda: _analytics(vault, today))
+
+
+def _analytics(vault: Vault, today: date) -> dict:
     ego, nodes, people, adj, statuses = _people_graph(vault, today)
-    bc = betweenness(adj, people)
-    comm = communities(adj, people)
+    graph_nodes = set(adj) | people
+    bc = betweenness(adj, graph_nodes)
+    comm = communities(adj, graph_nodes)
     groups: dict[int, list[str]] = defaultdict(list)
     for n, c in comm.items():
-        groups[c].append(n)
+        if n in people:
+            groups[c].append(n)
     named_groups = []
     for c, members in groups.items():
         if len(members) < 2:
@@ -292,10 +333,11 @@ def analytics(vault: Vault, today: date | None = None) -> dict:
     for n in sorted(people, key=lambda x: -bc.get(x, 0))[:15]:
         if bc.get(n, 0) <= 0:
             break
-        touching = {comm[m] for m in adj.get(n, {})} - {comm[n]}
+        touching = {comm[m] for m in adj.get(n, {}) if m in comm} - {comm[n]}
         st = statuses.get(n)
         brokers.append({"id": n, "name": nodes[n]["display_name"], "betweenness": round(bc[n], 3),
                         "bridges": len(touching) + 1, "strength": round(st.strength, 2) if st else None,
                         "dormant": bool(st and st.ratio and st.ratio > 2)})
-    return {"brokers": brokers, "groups": named_groups, "people": len(people),
-            "ties": sum(len(v) for v in adj.values()) // 2}
+    ties = sum(1 for a in people for b in adj.get(a, {}) if b in people) // 2
+    return {"brokers": brokers, "groups": named_groups, "people": len(people), "ties": ties,
+            "estimated": len(graph_nodes) > EXACT_LIMIT}

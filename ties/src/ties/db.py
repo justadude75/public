@@ -53,6 +53,15 @@ def _open_connection(path: Path, passphrase: str | None):
     conn.row_factory = _dict_row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.execute("PRAGMA journal_mode = WAL")
+    # Performance for large vaults: WAL with NORMAL sync is crash-safe for the database
+    # (a power cut can lose only the last transaction), bigger page cache, memory temp.
+    conn.execute("PRAGMA synchronous = NORMAL")
+    conn.execute("PRAGMA cache_size = -65536")       # 64 MB
+    conn.execute("PRAGMA temp_store = MEMORY")
+    try:
+        conn.execute("PRAGMA mmap_size = 268435456")  # 256 MB (ignored where unsupported)
+    except Exception:
+        pass
     return conn
 
 
@@ -75,6 +84,27 @@ class Vault:
         self._lock = threading.RLock()
         self.conn = _open_connection(self.path, passphrase)
         self._migrate()
+
+    # ── change tracking and caching ───────────────────────────────────────
+    @property
+    def version(self) -> tuple:
+        """Changes with every write: ours (total_changes) or another process's (data_version)."""
+        with self._lock:
+            other = self.conn.execute("PRAGMA data_version").fetchone()
+        return (self.conn.total_changes, next(iter(other.values())))
+
+    def cached(self, key: tuple, compute):
+        """Memoize `compute()` until the next write to the vault."""
+        cache = self.__dict__.setdefault("_cache", {})
+        hit = cache.get(key)
+        if hit is not None and hit[0] == self.version:
+            return hit[1]
+        value = compute()
+        cache[key] = (self.version, value)
+        if len(cache) > 256:
+            for k in list(cache)[:64]:
+                cache.pop(k, None)
+        return value
 
     # ── connection helpers ────────────────────────────────────────────────
     def _migrate(self) -> None:

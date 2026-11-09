@@ -293,3 +293,4 @@ table.ach tr.totals td { background: var(--surface-2); }
 .menu-body a { display: block; padding: .2rem 0; }
 .actions details.menu > summary.btn { padding: .42rem .8rem; color: var(--text); font-size: .92rem; }
 .actions details.menu .menu-body { top: 2.4rem; }
+.pager { display: flex; gap: .75rem; align-items: center; justify-content: center; margin: 1rem 0; }

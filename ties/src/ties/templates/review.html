@@ -7,11 +7,13 @@
   {% if p.confidence < 1 %}<span class="badge muted">{{ p.confidence | pct }}%</span>{% endif %}
   {% if p.qual.why %}<div class="muted small">Why: {{ p.qual.why }}</div>{% endif %}
 {%- endmacro %}
-{% macro group(title, items, note) -%}
+{% macro group(title, items, note, key, total) -%}
 {% if items %}
 <section class="card">
-  <h2>{{ title }} <span class="muted">({{ items | length }})</span></h2>
+  <h2>{{ title }} <span class="muted">({{ total }})</span></h2>
   {% if note %}<p class="muted small">{{ note }}</p>{% endif %}
+  {% if total > items | length %}<p class="small">Showing the first {{ items | length }} of {{ total }}.
+    <form method="post" action="/review/reject-group" class="inline" style="display:inline-flex" onsubmit="return confirm('Reject all {{ total }}? Rejected suggestions are not suggested again.')"><input type="hidden" name="group" value="{{ key }}"><button class="btn sm">Reject all {{ total }}</button></form></p>{% endif %}
   <form method="post" action="/review/bulk" id="bulk-{{ title | replace(' ', '') }}">
     <ul class="review">
       {% for p in items %}
@@ -39,7 +41,7 @@
   <h1>Review</h1>
   <p class="muted">Suggestions wait here until you confirm or reject them. Nothing here counts as a fact yet.{% if added %} {{ added }} new suggestion{{ 's' if added != 1 }} just added.{% endif %}</p>
 </div>
-{% set total = groups.rule | length + groups.model | length + groups.other | length + disputed | length + dups | length + proposed_loops | length %}
+{% set total = counts.rule + counts.model + counts.other + disputed | length + dups | length + proposed_loops | length %}
 {% if not total %}<section class="card"><p class="muted">All clear. Nothing to review.</p></section>{% endif %}
 
 {% if disputed %}
@@ -109,7 +111,7 @@
 </section>
 {% endif %}
 
-{{ group("Suggested by rules", groups.rule, "Patterns found in your own data. Turn rules on or off in Settings.") }}
-{{ group("Extracted by your local model", groups.model, "Read from your notes by the model. Check each one.") }}
-{{ group("Other proposals", groups.other, "Proposed by imports or agents.") }}
+{{ group("Suggested by rules", groups.rule, "Patterns found in your own data. Turn rules on or off in Settings.", "rule", counts.rule) }}
+{{ group("Extracted by your local model", groups.model, "Read from your notes by the model. Check each one.", "model", counts.model) }}
+{{ group("Other proposals", groups.other, "Proposed by imports or agents.", "other", counts.other) }}
 {% endblock %}

@@ -48,4 +48,12 @@
   <p class="muted pad">Nothing here yet. <a href="/new">Add someone</a>.</p>
   {% endif %}
 </section>
+{% if pages > 1 %}
+<nav class="pager">
+  {% set qs = '&type=' ~ f.type ~ '&engagement=' ~ f.engagement ~ '&tag=' ~ (f.tag | urlencode) ~ '&q=' ~ (f.q | urlencode) ~ '&sort=' ~ f.sort %}
+  {% if page > 1 %}<a class="btn sm" href="?page={{ page - 1 }}{{ qs }}">← Previous</a>{% endif %}
+  <span class="muted small">Page {{ page }} of {{ pages }} · {{ total }} entries</span>
+  {% if page < pages %}<a class="btn sm" href="?page={{ page + 1 }}{{ qs }}">Next →</a>{% endif %}
+</nav>
+{% endif %}
 {% endblock %}

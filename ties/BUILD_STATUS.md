@@ -1,7 +1,7 @@
 # Build status
 
 Built against the roadmap in `docs/personal-graph-plan.md` (section 13). All phases are done.
-The test suite has 85 tests (`pytest`).
+The test suite has 98 tests (`pytest`).
 
 Decisions in force:
 - Markdown import writes a `gid:` line into note frontmatter (on by default; Settings).
@@ -27,8 +27,15 @@ Decisions in force:
 | 4 | Research vault: sources, reliability grades, projects, as-of queries, contradictions, hypotheses, exports, bulk importers, batch ER | done |
 | 4 | Links between a personal and a research vault (read-only, nothing copied) | done |
 
+Since the phases:
+- Live fetching from free sources (Crossref, ROR, GLEIF, Wikidata) was run against the real services. The tests use responses saved from them.
+- Scalability work, benchmarked at 2,000 and 20,000 people (see the README).
+- One-step installers with launchers for macOS, Linux and Windows. Prebuilt SQLCipher packages are used on every platform.
+
 Known limits:
-- The OpenAlex and Wikidata fetchers could not be run against the live services in the build environment (network blocked). Their parsers are tested against saved responses in the documented formats.
+- OpenAlex now needs a free API key; the free sources above are offered instead.
+- The installers were tested on Linux only. The macOS and Windows encryption packages were confirmed to exist, but neither installer was run on those systems.
 - The local-model and outside-model paths are tested with stand-in models, not a real model.
-- The graph view uses Cytoscape for every graph; a WebGL renderer for very large research graphs (tens of thousands of nodes) is not built.
+- At 20,000 people the background warm-up takes about 15 s after each change, and Python computation in the background can briefly slow page loads while it runs.
+- The graph view caps at the 1,500 best-connected nodes unless you center on someone. There is no WebGL renderer for whole-network views of tens of thousands of nodes.
 - Mobile capture relies on Markdown files or the browser; there is no phone app.

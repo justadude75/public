@@ -38,24 +38,37 @@ def save_rule_settings(vault: Vault, settings: dict[str, bool]) -> None:
     vault.set_meta("inference_rules", json.dumps({k: bool(settings.get(k)) for k in INFERENCE_RULES}))
 
 
-def _pair_blocked(c, a: str, b: str, predicates: tuple[str, ...]) -> bool:
-    marks = ",".join("?" * len(predicates))
-    row = c.execute(
-        f"""select 1 from claim where predicate_id in ({marks})
-            and ((subject_id=? and object_id=?) or (subject_id=? and object_id=?))
-            and status in ('accepted','proposed','rejected','disputed') limit 1""",
-        (*predicates, a, b, b, a)).fetchone()
-    return row is not None
+def _linked_pairs(c) -> set[frozenset]:
+    """Every pair already connected (or rejected) by a person-to-person claim, loaded once."""
+    marks = ",".join("?" * len(PERSON_LINKS))
+    return {frozenset((r["subject_id"], r["object_id"])) for r in c.execute(
+        f"""select subject_id, object_id from claim where predicate_id in ({marks})
+            and object_id is not null
+            and status in ('accepted','proposed','rejected','disputed')""", PERSON_LINKS)}
 
 
-def _propose(c, src: str, a: str, b: str, predicate: str, rule: str, confidence: float,
-             why: str, block_on: tuple[str, ...] = PERSON_LINKS) -> bool:
-    if a == b or _pair_blocked(c, a, b, block_on + (predicate,)):
+MAX_NEW_PER_RULE = 200   # per run, so a large import can't flood Review
+
+
+def _propose(c, src, a: str, b: str, predicate: str, rule: str, confidence: float,
+             why: str, linked: set, pending: list) -> bool:
+    """Queue a suggestion; run() writes the best ones per rule at the end."""
+    pair = frozenset((a, b))
+    if a == b or pair in linked:
         return False
-    _add_claim(c, a, predicate, object_id=b, basis="inferred", confidence=confidence,
-               qualifiers={"why": why, "rule": rule}, source_id=src,
-               asserted_by=f"rule:{rule}", status="proposed")
+    linked.add(pair)
+    pending.append((rule, a, b, predicate, confidence, why))
     return True
+
+
+def run_if_changed(vault: Vault) -> dict[str, int]:
+    """Run the rules only if the vault changed since the last run (cheap to call often)."""
+    state = vault.__dict__.setdefault("_inference_state", {})
+    if state.get("version") == vault.version:
+        return {k: 0 for k in INFERENCE_RULES}
+    added = run(vault)
+    state["version"] = vault.version
+    return added
 
 
 def _year(value: str | None) -> int | None:
@@ -68,8 +81,12 @@ def run(vault: Vault) -> dict[str, int]:
     settings = rule_settings(vault)
     ego = vault.get_meta("ego_id")
     added = {k: 0 for k in settings}
+    if vault.get_meta("vault_kind") == "research" and vault.get_meta("research_inference") != "1":
+        return added            # research vaults: rules are off unless turned on
     with vault.tx() as c:
         src = None
+        linked = _linked_pairs(c)
+        touched: list = []      # pending suggestions, written at the end
 
         def source():
             nonlocal src
@@ -79,27 +96,35 @@ def run(vault: Vault) -> dict[str, int]:
 
         names = {r["id"]: r["display_name"] for r in c.execute(
             "select id, display_name from entity where status='active'")}
-        people = {r["id"] for r in c.execute(
-            "select id from entity where status='active' and type_id='person'")}
+        # Only people you know (tracked contacts and acquaintances) take part in rules;
+        # names merely referenced, e.g. paper authors, would produce noise at scale.
+        engagement = {r["id"]: r["engagement"] for r in c.execute(
+            "select id, engagement from entity where status='active' and type_id='person' "
+            "and engagement in ('contact','acquaintance','ego')")}
+        people = set(engagement)
 
         if settings["shared_events"]:
             together: dict[tuple[str, str], list[str]] = defaultdict(list)
-            for ev in c.execute(
-                    """select ed.entity_id, e.display_name from event_detail ed
-                       join entity e on e.id=ed.entity_id
+            members: dict[str, list[str]] = defaultdict(list)
+            titles: dict[str, str] = {}
+            for r in c.execute(
+                    """select p.event_id, p.entity_id, e.display_name from participation p
+                       join event_detail ed on ed.entity_id=p.event_id
+                       join entity e on e.id=p.event_id
                        where e.status='active' and ed.status='occurred'"""):
-                parts = [r["entity_id"] for r in c.execute(
-                    "select entity_id from participation where event_id=?", (ev["entity_id"],))]
+                members[r["event_id"]].append(r["entity_id"])
+                titles[r["event_id"]] = r["display_name"]
+            for event_id, parts in members.items():
                 others = sorted(p for p in parts if p != ego and p in people)
                 if len(parts) > SMALL_EVENT_MAX or len(others) < 2:
                     continue
                 for a, b in combinations(others, 2):
-                    together[(a, b)].append(ev["display_name"])
+                    together[(a, b)].append(titles[event_id])
             for (a, b), events in together.items():
                 if len(events) >= 2:
                     why = f"Both at {len(events)} small events: " + "; ".join(events[:3])
-                    added["shared_events"] += _propose(c, source(), a, b, "knows",
-                                                       "shared_events", 0.6, why)
+                    _propose(c, None, a, b, "knows",
+                                                       "shared_events", 0.6, why, linked, touched)
 
         if settings["shared_connector"]:
             intros = defaultdict(list)
@@ -109,12 +134,13 @@ def run(vault: Vault) -> dict[str, int]:
             for connector, introduced in intros.items():
                 for person in introduced:
                     why = f"{names.get(connector)} introduced you to {names.get(person)}"
-                    added["shared_connector"] += _propose(c, source(), connector, person,
-                                                          "knows", "shared_connector", 0.9, why)
+                    _propose(c, None, connector, person,
+                                                          "knows", "shared_connector", 0.9, why, linked, touched)
                 for a, b in combinations(sorted(set(introduced)), 2):
                     why = f"Both introduced to you by {names.get(connector)}"
-                    added["shared_connector"] += _propose(
-                        c, source(), a, b, "shares_connector", "shared_connector", 0.5, why)
+                    _propose(
+                        c, None, a, b, "shares_connector", "shared_connector", 0.5, why,
+                        linked, touched)
 
         if settings["overlapping_tenure"]:
             sizes = {}
@@ -146,9 +172,9 @@ def run(vault: Vault) -> dict[str, int]:
                         continue
                     where = f"team {team_x}" if same_team else f"{names.get(org)} (small team)"
                     why = f"Both at {where} at the same time"
-                    added["overlapping_tenure"] += _propose(
-                        c, source(), x["subject_id"], y["subject_id"], "colleague_of",
-                        "overlapping_tenure", 0.6, why)
+                    _propose(
+                        c, None, x["subject_id"], y["subject_id"], "colleague_of",
+                        "overlapping_tenure", 0.6, why, linked, touched)
 
         if settings["same_school_year"]:
             by_school = defaultdict(list)
@@ -159,6 +185,24 @@ def run(vault: Vault) -> dict[str, int]:
             for (school, year), studs in by_school.items():
                 for a, b in combinations(sorted(set(studs)), 2):
                     why = f"Both finished at {names.get(school)} in {year}"
-                    added["same_school_year"] += _propose(c, source(), a, b, "knows",
-                                                          "same_school_year", 0.4, why)
+                    _propose(c, None, a, b, "knows",
+                                                          "same_school_year", 0.4, why, linked, touched)
+        # Write the best suggestions per rule: pairs of tracked contacts first.
+        rank = {"contact": 2, "acquaintance": 1}
+        by_rule: dict[str, list] = defaultdict(list)
+        for item in touched:
+            by_rule[item[0]].append(item)
+        written: set[str] = set()
+        for rule, items in by_rule.items():
+            items.sort(key=lambda x: -(rank.get(engagement.get(x[1]), 0) +
+                                       rank.get(engagement.get(x[2]), 0) + x[4]))
+            for rule_, a, b, predicate, confidence, why in items[:MAX_NEW_PER_RULE]:
+                _add_claim(c, a, predicate, object_id=b, basis="inferred", confidence=confidence,
+                           qualifiers={"why": why, "rule": rule_}, source_id=source(),
+                           asserted_by=f"rule:{rule_}", status="proposed", reindex=False)
+                written.update((a, b))
+            added[rule] = min(len(items), MAX_NEW_PER_RULE)
+        from . import textindex
+        for eid in written:
+            textindex.reindex_entity(c, eid)
     return added

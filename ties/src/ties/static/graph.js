@@ -22,6 +22,10 @@
   async function load() {
     const res = await fetch(`/api/graph?${params()}`);
     const data = await res.json();
+    const count = document.getElementById("g-count");
+    if (count) count.textContent = data.total > data.nodes.length
+      ? `Showing the ${data.nodes.length} best-connected of ${data.total}. Center on someone to see their neighbourhood.` : "";
+    const big = data.nodes.length > 600;
     const path = new Set((box.dataset.path || "").split(",").filter(Boolean));
     const elements = data.nodes.map((n) => ({ data: { ...n, size: 18 + 40 * (n.strength || 0) }, classes: [n.type, n.due ? "due" : "", n.center ? "center" : "", path.has(n.id) ? "onpath" : ""].join(" ") }))
       .concat(data.edges.map((e) => ({ data: { id: e.id, source: e.source, target: e.target, label: e.label, w: e.weight }, classes: [e.inferred ? "inferred" : "", e.kind].join(" ") })));
@@ -31,7 +35,7 @@
       elements,
       wheelSensitivity: 0.25,
       style: [
-        { selector: "node", style: { "background-color": (n) => color[n.data("type")] || "#888", label: "data(label)", "font-size": 10, color: v("--text"), "text-valign": "bottom", "text-margin-y": 3, width: "data(size)", height: "data(size)" } },
+        { selector: "node", style: { "background-color": (n) => color[n.data("type")] || "#888", label: big ? "" : "data(label)", "font-size": 10, color: v("--text"), "text-valign": "bottom", "text-margin-y": 3, width: "data(size)", height: "data(size)" } },
         { selector: "node.organization", style: { shape: "round-rectangle" } },
         { selector: "node.place", style: { shape: "diamond" } },
         { selector: "node.due", style: { "border-width": 3, "border-color": v("--late") } },
@@ -41,7 +45,10 @@
         { selector: "edge.together", style: { "line-color": v("--muted"), "line-style": "dotted" } },
         { selector: "edge:selected, edge.hover", style: { label: "data(label)", "font-size": 9, color: v("--muted") } },
       ],
-      layout: { name: "cose", animate: false, nodeRepulsion: 9000, idealEdgeLength: 90, padding: 20 },
+      layout: big ? { name: "concentric", animate: false, minNodeSpacing: 6,
+                      concentric: (n) => n.degree(), levelWidth: () => 4 }
+                  : { name: "cose", animate: false, nodeRepulsion: 9000, idealEdgeLength: 90, padding: 20 },
+      textureOnViewport: big, hideEdgesOnViewport: big, pixelRatio: big ? 1 : "auto",
     });
     cy.on("tap", "node", (ev) => {
       const d = ev.target.data();

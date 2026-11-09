@@ -51,7 +51,13 @@ def score_pair(a: dict, b: dict) -> tuple[float, list[str]]:
                     reasons.append("same initial and family name")
                     score = max(score, 0.6)
                     continue
-            ratio = difflib.SequenceMatcher(None, na, nb).ratio()
+            if abs(len(na) - len(nb)) > 0.25 * max(len(na), len(nb)):
+                continue
+            sm = difflib.SequenceMatcher(None, na, nb)
+            # cheap upper bounds first; the exact ratio only for pairs that could pass
+            if sm.real_quick_ratio() < 0.88 or sm.quick_ratio() < 0.88:
+                continue
+            ratio = sm.ratio()
             if ratio >= 0.88:
                 reasons.append("similar spelling")
                 score = max(score, ratio * 0.75)
@@ -59,6 +65,12 @@ def score_pair(a: dict, b: dict) -> tuple[float, list[str]]:
 
 
 def candidates(vault: Vault, min_score: float = 0.55, limit: int = 100) -> list[dict]:
+    """Likely duplicate pairs, best first. Cached until the vault changes."""
+    return vault.cached(("dup_candidates", min_score, limit),
+                        lambda: _candidates(vault, min_score, limit))
+
+
+def _candidates(vault: Vault, min_score: float, limit: int) -> list[dict]:
     rows = vault.all(
         f"select id, type_id, display_name, engagement from entity where status='active' and "
         f"type_id in ({','.join('?' * len(CHECK_TYPES))}) and coalesce(engagement,'')<>'ego'",
@@ -105,12 +117,16 @@ def candidates(vault: Vault, min_score: float = 0.55, limit: int = 100) -> list[
                 if richness(b) > richness(a):
                     a, b = b, a
                 out.append({"a": {"id": a["id"], "display_name": a["display_name"],
-                                  "context": _context(vault, a["id"], a["type_id"])},
+                                  "type_id": a["type_id"]},
                             "b": {"id": b["id"], "display_name": b["display_name"],
-                                  "context": _context(vault, b["id"], b["type_id"])},
+                                  "type_id": b["type_id"]},
                             "score": score, "reasons": reasons})
     out.sort(key=lambda d: -d["score"])
-    return out[:limit]
+    out = out[:limit]
+    for d in out:   # context costs a few queries each, so only for what is shown
+        for side in ("a", "b"):
+            d[side]["context"] = _context(vault, d[side]["id"], d[side]["type_id"])
+    return out
 
 
 def not_same(vault: Vault, a: str, b: str) -> str:

@@ -35,6 +35,7 @@
   </div>
   <div id="cy" data-center="{{ center.id if center else '' }}" data-path="{{ (paths[0].hops | map(attribute='id') | join(',')) if paths else '' }}"></div>
   <p class="muted small" id="g-info">Click a node to see it; double-click to center on it.</p>
+  <p class="muted small" id="g-count"></p>
 </section>
 <script src="/static/vendor/cytoscape.min.js"></script>
 <script src="/static/graph.js"></script>

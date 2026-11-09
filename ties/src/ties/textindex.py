@@ -40,63 +40,90 @@ def chunk_text(text: str, size: int = CHUNK_CHARS) -> list[str]:
     return chunks
 
 
+# Index rows use the same rowid as their chunk / entity row. FTS5 can then delete a row
+# by rowid directly; deleting by an UNINDEXED column would scan the whole index.
+FTS_LAYOUT = "2"
+SEARCHABLE_SOURCES = ("note", "markdown", "web", "capture", "import", "research")
+
+
 def index_source(c, source_id: str, text: str | None) -> None:
     from .repo import new_id
 
-    old = [r["id"] for r in c.execute("select id from chunk where source_id=?", (source_id,))]
-    for cid in old:
-        c.execute("delete from chunk_fts where chunk_id=?", (cid,))
-        c.execute("delete from embedding where target_kind='chunk' and target_id=?", (cid,))
+    for r in c.execute("select rowid, id from chunk where source_id=?", (source_id,)).fetchall():
+        c.execute("delete from chunk_fts where rowid=?", (r["rowid"],))
+        c.execute("delete from embedding where target_kind='chunk' and target_id=?", (r["id"],))
     c.execute("delete from chunk where source_id=?", (source_id,))
     for i, part in enumerate(chunk_text(text or "")):
         cid = new_id()
-        c.execute("insert into chunk(id, source_id, ordinal, text) values(?,?,?,?)",
-                  (cid, source_id, i, part))
-        c.execute("insert into chunk_fts(text, chunk_id) values(?,?)", (part, cid))
+        rowid = c.execute("insert into chunk(id, source_id, ordinal, text) values(?,?,?,?)",
+                          (cid, source_id, i, part)).lastrowid
+        c.execute("insert into chunk_fts(rowid, text, chunk_id) values(?,?,?)", (rowid, part, cid))
+
+
+_FACTS_SQL = """
+  coalesce((select group_concat(p.label || ' ' || coalesce(json_extract(cl.value, '$'), o.display_name, ''), ' · ')
+            from claim cl join predicate p on p.id=cl.predicate_id
+            left join entity o on o.id=cl.object_id
+            where cl.subject_id=e.id and cl.status in ('accepted','proposed')), '')
+  || ' · ' ||
+  coalesce((select group_concat(p.label || ' ' || s.display_name, ' · ')
+            from claim cl join predicate p on p.id=cl.predicate_id
+            join entity s on s.id=cl.subject_id
+            where cl.object_id=e.id and cl.status='accepted'), '')
+  || ' · ' ||
+  coalesce((select group_concat(t.namespace || ' ' || t.name, ' ')
+            from tagging g join tag t on t.id=g.tag_id
+            where g.target_kind='entity' and g.target_id=e.id), '')
+"""
+_NAMES_SQL = "(select group_concat(name, ' ') from entity_name where entity_id=e.id)"
 
 
 def reindex_entity(c, entity_id: str | None) -> None:
     if not entity_id:
         return
-    c.execute("delete from entity_fts where entity_id=?", (entity_id,))
-    ent = c.execute("select status, type_id from entity where id=?", (entity_id,)).fetchone()
-    if not ent or ent["status"] != "active":
+    ent = c.execute("select rowid, status from entity where id=?", (entity_id,)).fetchone()
+    if not ent:
         return
-    names = " ".join(r["name"] for r in c.execute(
-        "select name from entity_name where entity_id=?", (entity_id,)))
-    parts = []
-    for r in c.execute(
-            """select p.label, cl.value, o.display_name as obj
-               from claim cl join predicate p on p.id=cl.predicate_id
-               left join entity o on o.id=cl.object_id
-               where cl.subject_id=? and cl.status in ('accepted','proposed')""", (entity_id,)):
-        val = json.loads(r["value"]) if r["value"] else r["obj"]
-        parts.append(f"{r['label']} {val}")
-    for r in c.execute(
-            """select p.label, s.display_name from claim cl join predicate p on p.id=cl.predicate_id
-               join entity s on s.id=cl.subject_id where cl.object_id=? and cl.status='accepted'""",
-            (entity_id,)):
-        parts.append(f"{r['label']} {r['display_name']}")
-    for r in c.execute(
-            "select t.namespace, t.name from tagging g join tag t on t.id=g.tag_id "
-            "where g.target_kind='entity' and g.target_id=?", (entity_id,)):
-        parts.append(f"{r['namespace']} {r['name']}")
-    c.execute("insert into entity_fts(entity_id, names, facts) values(?,?,?)",
-              (entity_id, names, " · ".join(parts)))
+    c.execute("delete from entity_fts where rowid=?", (ent["rowid"],))
+    if ent["status"] != "active":
+        return
+    c.execute(f"insert into entity_fts(rowid, entity_id, names, facts) "
+              f"select e.rowid, e.id, {_NAMES_SQL}, {_FACTS_SQL} from entity e where e.id=?",
+              (entity_id,))
 
 
-def rebuild(vault: Vault) -> dict:
+def rebuild(vault: Vault, rechunk: bool = False) -> dict:
+    """Rebuild the search index with a few set-based statements.
+
+    Existing chunks (and their embeddings) are kept unless rechunk=True; sources that
+    have no chunks yet are chunked.
+    """
+    marks = ",".join("?" * len(SEARCHABLE_SOURCES))
     with vault.tx() as c:
         c.execute("delete from entity_fts")
-        ids = [r["id"] for r in c.execute("select id from entity where status='active'")]
-        for eid in ids:
-            reindex_entity(c, eid)
-        sources = c.execute(
-            "select id, content from source where kind in ('note','markdown','web','capture') "
-            "and content is not null").fetchall()
-        for s in sources:
-            index_source(c, s["id"], s["content"])
-    return {"entities": len(ids), "sources": len(sources)}
+        c.execute(f"insert into entity_fts(rowid, entity_id, names, facts) "
+                  f"select e.rowid, e.id, {_NAMES_SQL}, {_FACTS_SQL} from entity e "
+                  f"where e.status='active'")
+        n_entities = c.execute("select count(*) as n from entity_fts").fetchone()["n"]
+        where = "" if rechunk else "and not exists(select 1 from chunk ch where ch.source_id=s.id)"
+        todo = c.execute(f"select id, title, content from source s where kind in ({marks}) "
+                         f"and content is not null and content<>'' {where}",
+                         SEARCHABLE_SOURCES).fetchall()
+        for s in todo:
+            text = s["content"]
+            index_source(c, s["id"], text)
+        c.execute("delete from chunk_fts")
+        c.execute("insert into chunk_fts(rowid, text, chunk_id) select rowid, text, id from chunk")
+        n_sources = c.execute("select count(distinct source_id) as n from chunk").fetchone()["n"]
+        c.execute("insert into meta(key, value) values('fts_layout', ?) on conflict(key) "
+                  "do update set value=excluded.value", (FTS_LAYOUT,))
+    return {"entities": n_entities, "sources": n_sources}
+
+
+def ensure_layout(vault: Vault) -> None:
+    """One-time upgrade of older vaults to the rowid-keyed index layout."""
+    if vault.get_meta("fts_layout") != FTS_LAYOUT:
+        rebuild(vault)
 
 
 # ── embeddings ──────────────────────────────────────────────────────────────
@@ -117,6 +144,45 @@ def _cos(a: list[float], b: list[float]) -> float:
     na = math.sqrt(sum(x * x for x in a))
     nb = math.sqrt(sum(y * y for y in b))
     return dot / (na * nb) if na and nb else 0.0
+
+
+def _matrix(vault: Vault, model: str):
+    """All vectors for a model, loaded once and cached until the vault changes."""
+    def load():
+        rows = vault.all("select target_kind, target_id, vector from embedding where model=?",
+                         (model,))
+        keys = [(r["target_kind"], r["target_id"]) for r in rows]
+        try:
+            import numpy as np
+            if not rows:
+                return keys, None
+            m = np.vstack([np.frombuffer(r["vector"], dtype=np.float32) for r in rows])
+            norms = np.linalg.norm(m, axis=1, keepdims=True)
+            norms[norms == 0] = 1
+            return keys, m / norms
+        except ImportError:
+            return keys, [_unpack(r["vector"]) for r in rows]
+    return vault.cached(("vectors", model), load)
+
+
+def nearest(vault: Vault, model: str, query_vec: list[float], k: int = 50):
+    """Top-k (similarity, kind, id). Uses numpy when installed, pure Python otherwise."""
+    keys, m = _matrix(vault, model)
+    if not keys:
+        return []
+    try:
+        import numpy as np
+        if m is not None and not isinstance(m, list):
+            q = np.asarray(query_vec, dtype=np.float32)
+            q = q / (np.linalg.norm(q) or 1)
+            sims = m @ q
+            top = np.argsort(-sims)[:k]
+            return [(float(sims[i]), keys[i][0], keys[i][1]) for i in top]
+    except ImportError:
+        pass
+    scored = sorted(((_cos(query_vec, v), kind, tid) for (kind, tid), v in zip(keys, m)),
+                    reverse=True)
+    return scored[:k]
 
 
 def embed_pending(vault: Vault, ai, limit: int = 64) -> int:
@@ -198,10 +264,7 @@ def search(vault: Vault, q: str, ai=None, limit: int = 20, any_term: bool = Fals
         except Exception:
             qv = None
         if qv:
-            rows = vault.all("select target_kind, target_id, vector from embedding where model=?",
-                             (ai.embed_model,))
-            scored = sorted(((_cos(qv, _unpack(r["vector"])), r["target_kind"], r["target_id"])
-                             for r in rows), reverse=True)[:50]
+            scored = nearest(vault, ai.embed_model, qv, 50)
             for i, (sim, kind, tid) in enumerate(scored):
                 if sim < 0.2:
                     break

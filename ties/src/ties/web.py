@@ -101,9 +101,10 @@ def create_app(vault: Vault, today_fn=date.today) -> FastAPI:
 
     @app.get("/people", response_class=HTMLResponse)
     def people(request: Request, type: str = "", engagement: str = "", tag: str = "",
-               q: str = "", sort: str = "name"):
+               q: str = "", sort: str = "name", page: int = 1):
+        per_page = 100
         rows = repo.list_entities(vault, type_id=type or None, engagement=engagement or None,
-                                  tag=tag or None, q=q or None)
+                                  tag=tag or None, q=q or None, details=False)
         statuses = scoring.compute_all(vault, today_fn())
         for r in rows:
             r["status"] = statuses.get(r["id"])
@@ -115,7 +116,12 @@ def create_app(vault: Vault, today_fn=date.today) -> FastAPI:
             rows.sort(key=lambda r: (r["status"] is None or r["status"].days_since is None,
                                      r["status"].days_since if r["status"] and
                                      r["status"].days_since is not None else 0))
-        return render(request, "people.html", rows=rows, tags=repo.all_tags(vault), nav="people",
+        total = len(rows)
+        pages = max(1, -(-total // per_page))
+        page = min(max(page, 1), pages)
+        shown = repo.add_details(vault, rows[(page - 1) * per_page: page * per_page])
+        return render(request, "people.html", rows=shown, tags=repo.all_tags(vault), nav="people",
+                      total=total, page=page, pages=pages,
                       f={"type": type, "engagement": engagement, "tag": tag, "q": q, "sort": sort})
 
     @app.get("/new", response_class=HTMLResponse)
@@ -196,7 +202,10 @@ def create_app(vault: Vault, today_fn=date.today) -> FastAPI:
             changes=memory.changed_since_last_contact(vault, entity_id, today_fn()),
             ai_ready=AIClient.from_vault(vault) is not None,
             all_goals=__import__("ties.strategy", fromlist=["goals"]).goals(vault),
-            support=__import__("ties.research", fromlist=["support"]).support(vault),
+            support=__import__("ties.research", fromlist=["support"]).support(
+                vault, [r["id"] for r in vault.all(
+                    "select id from claim where subject_id=? or object_id=?",
+                    (entity_id, entity_id))]),
             asof=_asof(request, entity_id),
             linked=__import__("ties.crossvault", fromlist=["linked_view"]).linked_view(vault, entity_id),
             projects=__import__("ties.research", fromlist=["projects"]).projects(vault)
@@ -357,7 +366,7 @@ def create_app(vault: Vault, today_fn=date.today) -> FastAPI:
     @app.get("/timeline", response_class=HTMLResponse)
     def timeline(request: Request, kind: str = "", status: str = "", tag: str = ""):
         rows = repo.list_events(vault, kind=kind or None, status=status or None, tag=tag or None,
-                                limit=500)
+                                limit=300)
         today = today_fn().isoformat()
         future = sorted([r for r in rows if r["start_at"][:10] >= today and
                          r["status"] == "planned"], key=lambda r: r["start_at"])

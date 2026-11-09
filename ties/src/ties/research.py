@@ -208,14 +208,39 @@ def _root(sources_by_id: dict, sid: str) -> str:
 
 def support(vault: Vault, claim_ids: list[str] | None = None) -> dict[str, dict]:
     """Per claim: independent source count, best grade, and an effective confidence."""
-    srcs = {r["id"]: r for r in vault.all(
-        "select id, reliability, credibility, independent_of, title from source")}
-    sql = "select ev.claim_id, ev.source_id from claim_evidence ev"
-    rows = vault.all(sql)
+    if claim_ids is not None:
+        claim_ids = list(claim_ids)
+        if not claim_ids:
+            return {}
+        rows = []
+        for i in range(0, len(claim_ids), 500):
+            chunk = claim_ids[i:i + 500]
+            rows += vault.all(f"select claim_id, source_id from claim_evidence where claim_id in "
+                              f"({','.join('?' * len(chunk))})", chunk)
+        src_ids = list({r["source_id"] for r in rows})
+        srcs = {}
+        for i in range(0, len(src_ids), 500):
+            chunk = src_ids[i:i + 500]
+            for r in vault.all(f"select id, reliability, credibility, independent_of, title from "
+                               f"source where id in ({','.join('?' * len(chunk))})", chunk):
+                srcs[r["id"]] = r
+        # follow copy chains so independence is judged correctly
+        pending = {s["independent_of"] for s in srcs.values() if s["independent_of"]} - set(srcs)
+        while pending:
+            for r in vault.all(f"select id, reliability, credibility, independent_of, title from "
+                               f"source where id in ({','.join('?' * len(pending))})", list(pending)):
+                srcs[r["id"]] = r
+            pending = {s["independent_of"] for s in srcs.values() if s["independent_of"]} - set(srcs)
+    else:
+        srcs = {r["id"]: r for r in vault.all(
+            "select id, reliability, credibility, independent_of, title from source "
+            "where reliability is not null or credibility is not null or independent_of is not null")}
+        rows = vault.all("select ev.claim_id, ev.source_id from claim_evidence ev join source s "
+                         "on s.id=ev.source_id where s.reliability is not null or "
+                         "s.credibility is not null")
     by_claim: dict[str, set] = defaultdict(set)
     for r in rows:
-        if claim_ids is None or r["claim_id"] in claim_ids:
-            by_claim[r["claim_id"]].add(r["source_id"])
+        by_claim[r["claim_id"]].add(r["source_id"])
     out = {}
     for cid, sids in by_claim.items():
         graded = [s for s in sids if srcs.get(s, {}).get("reliability") or srcs.get(s, {}).get("credibility")]

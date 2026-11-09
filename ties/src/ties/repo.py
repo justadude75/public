@@ -26,9 +26,28 @@ INDEXED_SOURCE_KINDS = {"note", "markdown", "web", "capture", "import"}
 # ── ids and normalization ────────────────────────────────────────────────────
 
 
+_id_state = {"ms": 0, "seq": 0}
+_id_lock = __import__("threading").Lock()
+
+
 def new_id() -> str:
-    """Time-sortable 32-hex-character id (48-bit ms timestamp + 80 random bits)."""
-    return f"{int(time.time() * 1000):012x}{secrets.token_hex(10)}"
+    """Time-sortable 32-hex-character id: 48-bit ms timestamp, 16-bit sequence, 64 random bits.
+
+    Strictly increasing within a process, so sorting by id is sorting by creation.
+    """
+    with _id_lock:
+        ms = int(time.time() * 1000)
+        if ms <= _id_state["ms"]:
+            ms = _id_state["ms"]
+            _id_state["seq"] += 1
+            if _id_state["seq"] > 0xFFFF:
+                ms += 1
+                _id_state["seq"] = 0
+        else:
+            _id_state["seq"] = 0
+        _id_state["ms"] = ms
+        seq = _id_state["seq"]
+    return f"{ms:012x}{seq:04x}{secrets.token_hex(8)}"
 
 
 def normalize_name(name: str) -> str:
@@ -118,8 +137,9 @@ def split_list(text: str | Iterable[str] | None) -> list[str]:
 
 
 def prepare(vault: Vault) -> None:
-    """Seed registries. Safe to run on every start."""
+    """Seed registries and upgrade the search index layout. Safe to run on every start."""
     seed(vault)
+    textindex.ensure_layout(vault)
 
 
 def init_vault(vault: Vault, my_name: str) -> str:
@@ -387,7 +407,7 @@ def _add_claim(c, subject_id: str, predicate_id: str, value: Any = None,
                confidence: float = 1.0, valid_from: str | None = None,
                valid_to: str | None = None, qualifiers: dict | None = None,
                source_id: str | None = None, asserted_by: str = "user",
-               status: str = "accepted") -> str:
+               status: str = "accepted", reindex: bool = True) -> str:
     pred = predicate(c, predicate_id)
     if not pred:
         raise ValueError(f"Unknown predicate: {predicate_id}")
@@ -436,8 +456,9 @@ def _add_claim(c, subject_id: str, predicate_id: str, value: Any = None,
     if source_id:
         c.execute("insert or ignore into claim_evidence(claim_id, source_id) values(?,?)",
                   (cid, source_id))
-    textindex.reindex_entity(c, subject_id)
-    textindex.reindex_entity(c, object_id)
+    if reindex:
+        textindex.reindex_entity(c, subject_id)
+        textindex.reindex_entity(c, object_id)
     return cid
 
 
@@ -503,7 +524,7 @@ def retract_claim(vault: Vault, claim_id: str) -> None:
             textindex.reindex_entity(c, old["subject_id"])
 
 
-def _claim_rows(vault: Vault, where: str, params: tuple) -> list[dict]:
+def _claim_rows(vault: Vault, where: str, params: tuple, limit: int | None = None) -> list[dict]:
     rows = vault.all(
         f"""select cl.*, p.label as predicate_label, p.reverse_label, p.symmetric,
                    p.inverse_id, p.range_kind, p.sensitivity, p.cardinality,
@@ -516,7 +537,8 @@ def _claim_rows(vault: Vault, where: str, params: tuple) -> list[dict]:
             join entity s on s.id=cl.subject_id
             left join entity o on o.id=cl.object_id
             where {where}
-            order by p.sort, cl.recorded_at""", params)
+            order by p.sort, cl.recorded_at, cl.rowid
+            {f"limit {int(limit)}" if limit else ""}""", params)
     for r in rows:
         r["value_text"] = json.loads(r["value"]) if r["value"] else None
         r["qual"] = json.loads(r["qualifiers"] or "{}")
@@ -746,8 +768,8 @@ def list_events(vault: Vault, *, entity_id: str | None = None, status: str | Non
                 end: str | None = None, limit: int = 200, descending: bool = True) -> list[dict]:
     where, params = ["e.status='active'"], []
     if entity_id:
-        where.append("(exists(select 1 from participation p where p.event_id=e.id and "
-                     "p.entity_id=?) or ed.location_id=?)")
+        where.append("(e.id in (select event_id from participation where entity_id=?) "
+                     "or ed.location_id=?)")
         params += [entity_id, entity_id]
     if status:
         where.append("ed.status=?")
@@ -777,11 +799,18 @@ def list_events(vault: Vault, *, entity_id: str | None = None, status: str | Non
             order by ed.start_at {'desc' if descending else 'asc'} limit ?""",
         (*params, limit))
     ego = vault.get_meta("ego_id")
+    ids = [r["id"] for r in rows]
+    people: dict[str, list[dict]] = {i: [] for i in ids}
+    for chunk in _chunks(ids):
+        for p in vault.all(
+                f"select p.event_id, en.id, en.display_name from participation p join entity en "
+                f"on en.id=p.entity_id where p.event_id in ({','.join('?' * len(chunk))}) "
+                f"and p.entity_id<>? order by en.display_name", [*chunk, ego]):
+            people[p["event_id"]].append({"id": p["id"], "display_name": p["display_name"]})
+    tags = tags_bulk(vault, "event", ids)
     for r in rows:
-        r["people"] = vault.all(
-            "select en.id, en.display_name from participation p join entity en on en.id=p.entity_id "
-            "where p.event_id=? and p.entity_id<>? order by en.display_name", (r["id"], ego))
-        r["tags"] = tags_for(vault, "event", r["id"])
+        r["people"] = people[r["id"]]
+        r["tags"] = tags[r["id"]]
     return rows
 
 
@@ -954,8 +983,56 @@ def duplicate_candidates(vault: Vault, type_id: str, name: str,
     return list(found.values())
 
 
+def _chunks(ids: list, n: int = 500):
+    for i in range(0, len(ids), n):
+        yield ids[i:i + n]
+
+
+def contexts(vault: Vault, rows: list[dict]) -> dict[str, str]:
+    """Short context ("Employer · City") for many entities with a few queries."""
+    ids = [r["id"] for r in rows]
+    types = {r["id"]: r["type_id"] for r in rows}
+    found: dict[str, dict[str, str]] = {}
+    for chunk in _chunks(ids):
+        marks = ",".join("?" * len(chunk))
+        for r in vault.all(
+                f"""select cl.subject_id, cl.predicate_id, o.display_name, cl.value from claim cl
+                    left join entity o on o.id=cl.object_id
+                    where cl.subject_id in ({marks}) and cl.status='accepted' and cl.valid_to is null
+                    and cl.predicate_id in ('employed_by','lives_in','located_in','title')
+                    order by cl.rowid""", chunk):
+            val = r["display_name"] or (json.loads(r["value"]) if r["value"] else "")
+            found.setdefault(r["subject_id"], {})[r["predicate_id"]] = val
+        for r in vault.all(f"select entity_id, start_at from event_detail where entity_id in "
+                           f"({marks})", chunk):
+            found.setdefault(r["entity_id"], {})["date"] = r["start_at"][:10]
+    out = {}
+    for eid in ids:
+        f = found.get(eid, {})
+        if types[eid] == "person":
+            bits = [x for x in (f.get("employed_by"), f.get("lives_in")) if x] or \
+                ([f["title"]] if f.get("title") else [])
+        elif types[eid] == "event":
+            bits = [f["date"]] if f.get("date") else []
+        else:
+            bits = [f["located_in"]] if f.get("located_in") else []
+        out[eid] = " · ".join(bits)
+    return out
+
+
+def tags_bulk(vault: Vault, kind: str, ids: list[str]) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {i: [] for i in ids}
+    for chunk in _chunks(ids):
+        for r in vault.all(
+                f"select g.target_id, t.namespace, t.name from tagging g join tag t on t.id=g.tag_id "
+                f"where g.target_kind=? and g.target_id in ({','.join('?' * len(chunk))}) "
+                f"order by t.namespace, t.name", [kind, *chunk]):
+            out[r["target_id"]].append(tag_label(r["namespace"], r["name"]))
+    return out
+
+
 def list_entities(vault: Vault, type_id: str | None = None, engagement: str | None = None,
-                  tag: str | None = None, q: str | None = None) -> list[dict]:
+                  tag: str | None = None, q: str | None = None, details: bool = True) -> list[dict]:
     where, params = ["e.status='active'", "e.type_id<>'event'",
                      "coalesce(e.engagement,'')<>'ego'"], []
     if type_id:
@@ -976,9 +1053,17 @@ def list_entities(vault: Vault, type_id: str | None = None, engagement: str | No
     rows = vault.all(
         f"select e.* from entity e where {' and '.join(where)} order by e.display_name collate nocase",
         params)
+    if details:
+        add_details(vault, rows)
+    return rows
+
+
+def add_details(vault: Vault, rows: list[dict]) -> list[dict]:
+    ctx = contexts(vault, rows)
+    tags = tags_bulk(vault, "entity", [r["id"] for r in rows])
     for r in rows:
-        r["context"] = _context(vault, r["id"], r["type_id"])
-        r["tags"] = tags_for(vault, "entity", r["id"])
+        r["context"] = ctx.get(r["id"], "")
+        r["tags"] = tags.get(r["id"], [])
     return rows
 
 
@@ -1086,8 +1171,36 @@ def resolve_dispute(vault: Vault, claim_id: str, keep_new: bool) -> None:
         textindex.reindex_entity(c, row["subject_id"])
 
 
-def proposed_claims(vault: Vault, status: str = "proposed") -> list[dict]:
-    rows = _claim_rows(vault, "cl.status=?", (status,))
+PROPOSAL_GROUPS = {
+    "rule": "cl.asserted_by like 'rule:%'",
+    "model": "(cl.asserted_by like 'model:%' or json_extract(cl.qualifiers, '$.source')='model')",
+    "other": "cl.asserted_by not like 'rule:%' and cl.asserted_by not like 'model:%' and "
+             "coalesce(json_extract(cl.qualifiers, '$.source'), '')<>'model'",
+}
+
+
+def proposal_counts(vault: Vault) -> dict[str, int]:
+    return {g: vault.scalar(f"select count(*) from claim cl where cl.status='proposed' and {w}")
+            for g, w in PROPOSAL_GROUPS.items()}
+
+
+def reject_group(vault: Vault, group: str, rule: str | None = None) -> int:
+    where = PROPOSAL_GROUPS[group]
+    params: tuple = ()
+    if rule:
+        where += " and cl.asserted_by=?"
+        params = (f"rule:{rule}",)
+    with vault.tx() as c:
+        n = c.execute(f"update claim set status='rejected' where id in (select cl.id from claim cl "
+                      f"where cl.status='proposed' and {where})", params).rowcount
+        vault.audit(c, "write", None, {"op": "reject_group", "group": group, "rule": rule, "n": n})
+    return n
+
+
+def proposed_claims(vault: Vault, status: str = "proposed", group: str | None = None,
+                    limit: int | None = None) -> list[dict]:
+    where = "cl.status=?" + (f" and {PROPOSAL_GROUPS[group]}" if group else "")
+    rows = _claim_rows(vault, where, (status,), limit)
     for r in rows:
         _orient(vault, r, r["subject_id"])
         if status == "disputed":

@@ -86,6 +86,8 @@ def _start_background(vault: Vault) -> None:
     from . import textindex
     from .ai import AIClient
 
+    from . import warm
+
     def loop():
         while True:
             client = AIClient.from_vault(vault)
@@ -96,6 +98,17 @@ def _start_background(vault: Vault) -> None:
                 except Exception:
                     pass
             time.sleep(60)
+
+    def warmer():
+        time.sleep(2)
+        while True:
+            try:
+                warm.warm(vault)
+            except Exception:
+                pass
+            time.sleep(15)
+
+    threading.Thread(target=warmer, daemon=True, name="ties-warm").start()
 
     threading.Thread(target=loop, daemon=True, name="ties-embed").start()
 
@@ -246,6 +259,22 @@ def cmd_link(args) -> None:
     print(f"{n} links saved. Nothing was copied between vaults.")
 
 
+def cmd_bench(args) -> None:
+    import resource
+
+    from . import bench
+
+    path = Path(args.vault).expanduser()
+    if path.exists():
+        sys.exit(f"{path} already exists. Benchmarks need a new vault path (--vault).")
+    vault = Vault(path)
+    info = bench.build(vault, people=args.people)
+    print(f"Built: {info}")
+    for name, ms in bench.run(vault, heavy=not args.light).items():
+        print(f"  {name:40} {ms:7} ms")
+    print(f"Peak memory: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss // 1024} MB")
+
+
 def cmd_backup(args) -> None:
     vault = open_vault(Path(args.vault).expanduser())
     dest = vault.backup(Path(args.dest).expanduser())
@@ -319,8 +348,13 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--yes", action="store_true", help="accept every suggested link")
     p.set_defaults(func=cmd_link)
 
+    p = sub.add_parser("bench", help="build a synthetic vault and time the main pages")
+    p.add_argument("--people", type=int, default=5000)
+    p.add_argument("--light", action="store_true", help="skip the slowest analytics")
+    p.set_defaults(func=cmd_bench)
+
     for name in ("serve", "demo", "export", "backup", "init", "restore", "import", "mcp",
-                 "research", "resolve", "link"):
+                 "research", "resolve", "link", "bench"):
         sub.choices[name].add_argument("--vault", default=argparse.SUPPRESS,
                                        help="vault file")
     args = parser.parse_args(argv)

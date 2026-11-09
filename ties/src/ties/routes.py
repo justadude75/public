@@ -33,21 +33,22 @@ def register(app, vault, render, back, today_fn, entity_or_404) -> None:
 
     @app.get("/review", response_class=HTMLResponse)
     def review(request: Request):
-        added = inference.run(vault)
-        proposed = repo.proposed_claims(vault)
-        groups = {"rule": [], "model": [], "other": []}
-        for p in proposed:
-            src = p["asserted_by"]
-            key = "rule" if src.startswith("rule:") else (
-                "model" if p["qual"].get("source") == "model" or src.startswith("model:") else "other")
-            groups[key].append(p)
+        added = inference.run_if_changed(vault)
+        groups = {g: repo.proposed_claims(vault, group=g, limit=100) for g in repo.PROPOSAL_GROUPS}
+        counts = repo.proposal_counts(vault)
         from . import resolution
         extra = {"dups": resolution.candidates(vault), "recent_merges": resolution.merges(vault, 5)}
         return render(request, "review.html", groups=groups,
                       disputed=repo.proposed_claims(vault, "disputed"),
                       added=sum(added.values()), rule_labels=inference.RULE_LABELS,
                       proposed_loops=repo.commitments(vault, status="proposed"),
-                      nav="review", **extra)
+                      counts=counts, nav="review", **extra)
+
+    @app.post("/review/reject-group")
+    async def review_reject_group(request: Request):
+        form = await request.form()
+        n = repo.reject_group(vault, form.get("group", "rule"), form.get("rule") or None)
+        return back("/review", flash=f"Rejected {n} suggestions")
 
     @app.post("/claim/{claim_id}/confirm")
     async def claim_confirm(request: Request, claim_id: str):

@@ -94,7 +94,7 @@ def fact_changes(vault: Vault, today: date) -> list[dict]:
               and s.engagement='contact' and s.status='active'
               and exists(select 1 from claim old where old.subject_id=cl.subject_id
                          and old.predicate_id=cl.predicate_id and old.id<>cl.id
-                         and old.id < cl.id
+                         and old.rowid < cl.rowid
                          and old.status in ('accepted','superseded'))
             order by cl.recorded_at desc""", (*FACT_CHANGE_PREDICATES, since))
     hidden = hidden_keys(vault, "fact_change", today)

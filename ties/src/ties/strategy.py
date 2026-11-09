@@ -125,50 +125,105 @@ def _connected(vault: Vault, a: str, b: str) -> bool:
                      (a, b, b, a)) is not None
 
 
-def intro_suggestions(vault: Vault, ai=None, min_overlap: int = 1) -> list[dict]:
-    """Pairs where one person is looking for what another can offer."""
+def intro_suggestions(vault: Vault, ai=None, min_overlap: int = 1, limit: int = 200) -> list[dict]:
+    """Pairs where one person is looking for what another can offer. Cached until a change."""
     from .triggers import hidden_keys
+
+    use_ai = ai is not None and getattr(ai, "embed_model", None)
+    raw = vault.cached(("intros", min_overlap, bool(use_ai)),
+                       lambda: _intro_pairs(vault, ai if use_ai else None, min_overlap))
+    hidden = hidden_keys(vault, "intro", date.today())
+    return [x for x in raw if x["key"] not in hidden][:limit]
+
+
+PER_SEEKER = 5        # best offers kept per request
+MAX_INTROS = 500
+
+
+def _intro_pairs(vault: Vault, ai, min_overlap: int) -> list[dict]:
+    import heapq
+    import math
 
     seeking = _claims_by(vault, "seeking")
     offers = _claims_by(vault, "offering")
     # Expertise also counts as an offer: interests and job titles.
     offers += [{**r, "implicit": True} for r in _claims_by(vault, "interest")]
     offers += [{**r, "implicit": True} for r in _claims_by(vault, "title")]
-    hidden = hidden_keys(vault, "intro", date.today())
+    for x in seeking + offers:
+        x["text"] = json.loads(x["value"])
+        x["tok"] = _tokens(x["text"])
+    # Inverted index: token -> offers mentioning it, so each need is compared only with
+    # offers that share at least one word (not with every offer in the vault).
+    by_token: dict[str, list[int]] = defaultdict(list)
+    for i, o in enumerate(offers):
+        for t in o["tok"]:
+            by_token[t].append(i)
+    # Rare shared words say more than common ones (inverse document frequency).
+    n_offers = max(len(offers), 1)
+    idf = {t: math.log(1 + n_offers / len(ix)) for t, ix in by_token.items()}
     vectors = {}
-    if ai is not None and getattr(ai, "embed_model", None):
-        texts = list({json.loads(x["value"]) for x in seeking + offers})
+    if ai is not None:
+        texts = list({x["text"] for x in seeking + offers})
         try:
             vectors = dict(zip(texts, ai.embed(texts)))
         except Exception:
             vectors = {}
-    out, seen = [], set()
+    linked = {frozenset((r["subject_id"], r["object_id"])) for r in vault.all(
+        "select subject_id, object_id from claim where object_id is not null and "
+        "status in ('accepted','proposed')")}
+    out = []
     for s in seeking:
-        s_text = json.loads(s["value"])
-        s_tok = _tokens(s_text)
-        for o in offers:
+        s_weight = sum(idf.get(t, math.log(1 + n_offers)) for t in s["tok"]) or 1
+        scores: dict[int, float] = defaultdict(float)
+        # Find candidates through the request's rarer words; very common words (in more than
+        # max(200, 2%) of offers) only add to the score of candidates found that way.
+        common_cut = max(200, n_offers // 50)
+        known = [t for t in s["tok"] if t in by_token]
+        rare = [t for t in known if len(by_token[t]) <= common_cut] or \
+            sorted(known, key=lambda t: len(by_token[t]))[:1]
+        for t in rare:
+            for i in by_token[t][:5000]:
+                scores[i] += idf[t]
+        for t in known:
+            if t not in rare:
+                for i in list(scores):
+                    if t in offers[i]["tok"]:
+                        scores[i] += idf[t]
+        if vectors:
+            for i, o in enumerate(offers):
+                sim = textindex._cos(vectors[s["text"]], vectors[o["text"]])
+                if sim >= 0.75:
+                    scores[i] = max(scores[i], sim * s_weight)
+        best: list[tuple[float, int]] = []
+        seen_people = set()
+        for i, raw in scores.items():
+            o = offers[i]
             if o["subject_id"] == s["subject_id"]:
                 continue
-            o_text = json.loads(o["value"])
-            overlap = s_tok & _tokens(o_text)
-            score = len(overlap) / max(len(s_tok), 1)
-            if vectors:
-                score = max(score, textindex._cos(vectors[s_text], vectors[o_text]))
-            if len(overlap) < min_overlap and score < 0.75:
+            overlap = s["tok"] & o["tok"]
+            if len(overlap) < min_overlap and not vectors:
                 continue
-            key = f"{s['subject_id']}:{o['subject_id']}"
-            if key in seen or key in hidden:
+            score = raw / s_weight * (0.7 if o.get("implicit") else 1.0)
+            item = (score, i)
+            if len(best) < PER_SEEKER * 3:
+                heapq.heappush(best, item)
+            elif item > best[0]:
+                heapq.heapreplace(best, item)
+        for score, i in sorted(best, reverse=True):
+            o = offers[i]
+            if o["subject_id"] in seen_people or len(seen_people) >= PER_SEEKER:
                 continue
-            seen.add(key)
+            seen_people.add(o["subject_id"])
             out.append({
-                "key": key, "seeker": {"id": s["subject_id"], "name": s["display_name"]},
+                "key": f"{s['subject_id']}:{o['subject_id']}",
+                "seeker": {"id": s["subject_id"], "name": s["display_name"]},
                 "offerer": {"id": o["subject_id"], "name": o["display_name"]},
-                "need": s_text, "offer": o_text, "overlap": sorted(overlap),
-                "score": round(score * (0.7 if o.get("implicit") else 1.0), 2),
-                "already_connected": _connected(vault, s["subject_id"], o["subject_id"]),
+                "need": s["text"], "offer": o["text"], "overlap": sorted(s["tok"] & o["tok"]),
+                "score": round(score, 2),
+                "already_connected": frozenset((s["subject_id"], o["subject_id"])) in linked,
             })
     out.sort(key=lambda x: (x["already_connected"], -x["score"]))
-    return out
+    return out[:MAX_INTROS]
 
 
 # ── weekly review ───────────────────────────────────────────────────────────

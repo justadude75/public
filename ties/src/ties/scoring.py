@@ -51,16 +51,20 @@ class ContactStatus:
     reasons: list[str] = field(default_factory=list)
 
 
-def _interactions(vault: Vault, ego: str) -> list[dict]:
+def _interactions(vault: Vault, ego: str, only: str | None = None) -> list[dict]:
+    extra, params = "", [ego, ego]
+    if only:
+        extra = " and p.entity_id = ?"
+        params.append(only)
     return vault.all(
-        """select p.entity_id, ed.entity_id as event_id, e.display_name as title, ed.start_at,
+        f"""select p.entity_id, ed.entity_id as event_id, e.display_name as title, ed.start_at,
                   ed.status, ed.channel, ed.kind, ed.initiated_by, ed.counts_as_contact
            from participation p
            join event_detail ed on ed.entity_id = p.event_id
            join entity e on e.id = ed.entity_id
            where e.status='active' and p.entity_id <> ?
              and exists(select 1 from participation pe where pe.event_id = p.event_id
-                        and pe.entity_id = ?)""", (ego, ego))
+                        and pe.entity_id = ?){extra}""", params)
 
 
 def _context_tag_count(vault: Vault, entity_id: str) -> int:
@@ -71,8 +75,14 @@ def _context_tag_count(vault: Vault, entity_id: str) -> int:
 
 def compute_all(vault: Vault, today: date | None = None,
                 only: str | None = None) -> dict[str, ContactStatus]:
-    """Status for every tracked contact (or only one entity)."""
+    """Status for every tracked contact (or only one entity). Cached until the vault changes."""
     today = today or date.today()
+    if only is None:
+        return vault.cached(("compute_all", today.isoformat()), lambda: _compute(vault, today, None))
+    return _compute(vault, today, only)
+
+
+def _compute(vault: Vault, today: date, only: str | None) -> dict[str, ContactStatus]:
     ego = vault.get_meta("ego_id")
     params: tuple = ()
     extra = ""
@@ -89,8 +99,13 @@ def compute_all(vault: Vault, today: date | None = None,
                            "join goal g on g.id=gl.goal_id where g.status='active' "
                            "and gl.target_kind='entity' group by gl.target_id"):
             goal_rel[r["target_id"]] = float(r["rel"])
+    context_counts = {r["target_id"]: r["n"] for r in vault.all(
+        "select g.target_id, count(*) as n from tagging g join tag t on t.id=g.tag_id "
+        "where g.target_kind='entity' and t.namespace='context'"
+        + (" and g.target_id=?" if only else "") + " group by g.target_id",
+        (only,) if only else ())}
     by_entity: dict[str, list[dict]] = {}
-    for row in _interactions(vault, ego):
+    for row in _interactions(vault, ego, only):
         by_entity.setdefault(row["entity_id"], []).append(row)
 
     out: dict[str, ContactStatus] = {}
@@ -149,7 +164,7 @@ def compute_all(vault: Vault, today: date | None = None,
             score += weight * 2 ** (-(today - day).days / HALF_LIFE_DAYS)
         interaction = score / (1 + score)
         closeness = (c["closeness_self"] / 5) if c["closeness_self"] else 0.5
-        multiplexity = min(_context_tag_count(vault, c["id"]), 3) / 3
+        multiplexity = min(context_counts.get(c["id"], 0), 3) / 3
         recent = [ev for day, ev in occurred if (today - day).days <= 365 and ev["initiated_by"]]
         if recent:
             them = sum(1 for ev in recent if ev["initiated_by"] != ego)
