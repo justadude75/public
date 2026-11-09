@@ -1,6 +1,6 @@
 # Personal Graph & Entity Resolution: Conceptual Plan
 
-**Status:** Draft v0.1 · 2026-11-09
+**Status:** Draft v0.2 · 2026-11-09 (updated with your decisions: local only, single user, manual entry first, local AI, personal first)
 **Scope:** Data model, entity resolution, relationship engine, semantic layer, research vault, a simple frontend, and a phased roadmap.
 
 ---
@@ -10,10 +10,20 @@
 1. **One engine, two vaults.** A *Personal* vault for relationship management and a *Research* vault for long-term investigation share the same code and schema. They live in **separate databases with separate encryption keys**. Data crosses between them only through explicit links that you confirm.
 2. **Keep what was observed separate from what is believed.** Raw sources lead to *mentions*, and mentions are resolved into *entities*. A merge is a recorded decision you can undo, never a destructive rewrite. This is what lets entity resolution run over years and keep improving.
 3. **Store facts as claims, not columns.** Every fact and every relationship is a statement: subject, predicate, object, plus its source, confidence, valid time and recorded time. This gives you provenance, contradictions, history, "what changed since we last spoke" and "as-of" queries without extra work.
-4. **Relational core, graph as a projection.** Use Postgres (with pgvector, full-text search and trigram matching) as the system of record. Run graph analytics on projections built from it. Add a dedicated graph database only if traversal workloads ever need one.
+4. **Relational core, graph as a projection.** Use SQLite as the system of record: one encrypted file per vault (SQLCipher), with FTS5 full-text search and the sqlite-vec vector extension. Run graph analytics in-process on projections built from it. Add a dedicated graph database only if traversal workloads ever need one.
 5. **Events drive the CRM side.** Every interaction is an event. Days since contact, cadence, relationship strength, triggers and briefings are all computed from events.
-6. **LLMs propose; you or a threshold decide.** Extraction from notes, resolution of ambiguous pairs and profile summaries all arrive as *proposed* claims with provenance. They go to a review inbox, or are auto-accepted above a confidence threshold you set per vault.
-7. **Expose the system to agents from day one** through an API and an MCP server. This is where most of the "beyond human capacity" leverage comes from: pre-meeting briefs, watchlist monitoring, introduction matching and weekly reviews across hundreds or thousands of ties, which no person can sustain by hand.
+6. **Local LLMs propose; you or a threshold decide.** Extraction from notes, resolution of ambiguous pairs and profile summaries all arrive as *proposed* claims with provenance. They go to a review inbox, or are auto-accepted above a confidence threshold you set per vault.
+7. **Expose the system to local agents** through a localhost API and a local MCP server. Any outside model sees only abstracted, pseudonymized data that passes through the privacy gateway (section 12). This is where most of the "beyond human capacity" leverage comes from: pre-meeting briefs, watchlist monitoring, introduction matching and weekly reviews across hundreds or thousands of ties, which no person can sustain by hand.
+
+### 0.1 Decisions made (2026-11-09)
+
+| Question | Decision | What it changes in this plan |
+|---|---|---|
+| Local or hosted? | **Local only** | SQLite, one encrypted file per vault, a localhost-only app, no cloud sync in v1 (section 11) |
+| Shared with collaborators? | **Not for now**, single user | No accounts or permissions. Provenance records only you, an importer, a rule or a model. |
+| Data sources | **Manual entry per entity first**; standardized importers for later connections | Data entry and resolving names at entry time come first. One importer contract is defined now so connectors can plug in later (section 4.10). |
+| AI | **Local model by default**; outside models only see abstracted data | A local AI tier plus a privacy gateway for optional outside reasoning (section 12) |
+| Priority | **Personal first** | The research vault moves to the last phase. The schema keeps the vault concept so research can be added without migration (section 13). |
 
 ---
 
@@ -25,7 +35,7 @@
 | **Research: network mapping and resolution** (secondary, can run standalone) | Ingest people, organizations, publications, links, filings and historical events. Resolve duplicates across sources over years. Search structured data, full text and meaning together. | A researcher can answer "who is connected to whom, according to which sources, as of when" and can defend every edge with a citation. |
 | **Strategic** (spans both) | Goals, warm-introduction paths, bridging ties, matching asks to offers, watchlists. | The system surfaces opportunities a human would not notice across a network larger than the ~150 relationships a person can actively maintain. |
 
-**Not in v1:** multi-user collaboration, scraping social networks against their terms of service, sending messages automatically. (Drafting messages is in scope; sending is not.)
+**Not in v1:** multi-user collaboration, cloud sync or hosting, live network connectors (importers read local files), scraping social networks, sending messages automatically. (Drafting messages is in scope; sending is not.)
 
 ---
 
@@ -38,7 +48,7 @@
 5. **Uncertainty is first-class.** Claims have confidence. Contradicting claims sit side by side, flagged instead of overwritten. This matters most in the research vault.
 6. **A type system that can grow.** Entity types and predicates live in registries, not hard-coded tables. Adding "Vessel" or "Grant" is a data change, not a migration.
 7. **Explainable recommendations.** Every suggestion shows its reason ("94 days since contact; cadence 60; she changed jobs on Oct 3").
-8. **Privacy by partition.** Vault boundaries, sensitivity labels on predicates, and nothing leaves the machine unless you choose a provider that requires it.
+8. **Privacy by partition.** Vault boundaries and sensitivity labels on predicates. Nothing leaves the machine by default. An outside model sees only what the abstraction gateway lets through (section 12).
 
 ---
 
@@ -49,9 +59,9 @@ flowchart TB
   subgraph CAP[Capture]
     A1[Quick capture: natural-language notes]
     A2[Forms: entity, event, relationship]
-    A3[Imports: contacts, calendar, CSV, LinkedIn export]
-    A4[Research ingest: papers, links, filings, datasets]
-    A5[Agents via API / MCP]
+    A3[Importers: vCard, iCal, CSV, JSON]
+    A4[Research ingest, later: papers, links, filings, datasets]
+    A5[Local agents via API / MCP]
   end
   subgraph L0[L0 Evidence]
     S[(Sources and blobs: immutable, hashed)]
@@ -107,7 +117,7 @@ flowchart TB
 
 | Concept | What it is | Notes |
 |---|---|---|
-| **Vault** | An isolated store: `personal` or `research` (you can have several research vaults, one per project or case) | Separate database and key |
+| **Vault** | An isolated store: `personal` or `research` (you can have several research vaults, one per project or case) | Separate encrypted file and key |
 | **Source** | Any piece of evidence: note, email, meeting log, URL snapshot, paper, filing, import row, or "manual entry by me" | Content hash, capture time, publish time, reliability rating |
 | **Chunk** | A passage of a source's text, with full-text index and embedding | Unit of semantic search |
 | **Mention** | A reference to an entity inside a source ("J. Smith, Acme CFO" in note #812) | The unit of entity resolution |
@@ -249,7 +259,43 @@ erDiagram
     ENTITY ||--o{ CROSS_VAULT_LINK : "linked to research"
 ```
 
-A SQL sketch is in [Appendix A](#appendix-a-schema-sketch-postgres).
+A SQL sketch is in [Appendix A](#appendix-a-schema-sketch-sqlite).
+
+### 4.10 Data entry and the importer contract
+
+Entering information by hand, one entity at a time, is the main way data gets in. That has two consequences.
+
+**Resolve names as you type.** In any field that refers to an entity (participants, employer, "introduced by"), autocomplete shows existing entities with enough context to tell them apart: *Raj Mehta (Acme · NYC · last contact 12d)* versus *Raj Iyer (Denver · reference)*. Picking one links to it. Choosing "new" creates the entity and runs a quick duplicate check before saving. For a hand-entered personal vault this prevents most duplicates. The background resolution in section 5 catches the rest.
+
+**Every manual entry is still a source.** Each save writes a `source` of kind `manual` with a timestamp, so provenance, "when did I learn this" and the "changed since last contact" diff all work for hand-entered data too.
+
+**The importer contract.** Every future connector implements the same small interface, so adding one never touches the core:
+
+```
+importer:
+  id, version
+  accepts:      file type (vcf, ics, csv, json, ...)
+  map(raw_file) → [ImportRecord]
+
+ImportRecord:
+  external_key   stable key from the origin (vCard UID, calendar UID, row hash), used for idempotency
+  entity_type
+  names[]        with kinds
+  identifiers[]  scheme + value
+  claims[]       predicate + value or entity reference + valid time
+  events[]       with participants given by reference to other records or to identifiers
+  raw            the original record, stored as a source
+```
+
+Every import runs through the same pipeline:
+
+1. **Parse and map** the file into ImportRecords.
+2. **Dry run:** match each record against existing entities, by identifiers first and then by the resolution engine.
+3. **Diff preview:** new entities, matched entities with new facts, conflicts with what you entered by hand, and ambiguous matches.
+4. **Approve:** everything is written as one `import_batch`, and the whole batch can be rolled back.
+5. **Re-import safely:** running the same import again is idempotent (external key plus content hash). Only changes come through, as new claims that supersede the old ones. Imports never overwrite facts you entered by hand. Conflicts go to the review inbox.
+
+**Formats to support first**, because most downstream sources can export to them: vCard (`.vcf`) for contacts, iCalendar (`.ics`) for events, CSV with a saved column mapping, and the system's own JSON interchange format (also used for backup and export). Source-specific exports, such as a LinkedIn CSV, email metadata or a messaging export, then become thin mappers onto the same ImportRecord shape.
 
 ---
 
@@ -375,8 +421,8 @@ Every row shows **why** it is there and offers one action: *log contact*, *snooz
 Every note, event description, email body you choose to store, and research document passes through the same pipeline:
 
 1. **Chunk** into passages of about 200–500 tokens, keeping speaker and section metadata.
-2. **Index:** full-text search (BM25 or Postgres `tsvector`) plus an embedding (pgvector). Store the embedding model ID with every vector so you can re-embed when you change models.
-3. **Extract** with an LLM into structured form: mentions, proposed claims, events, commitments, topics, sentiment and dates. Everything links back to the source span.
+2. **Index:** full-text search (SQLite FTS5 with BM25 ranking) plus an embedding from a local embedding model, stored in sqlite-vec. Store the embedding model ID with every vector so you can re-embed when you change models.
+3. **Extract** with the local LLM into structured form: mentions, proposed claims, events, commitments, topics, sentiment and dates. Everything links back to the source span.
 4. **Derive** analyses on demand or on a schedule:
    - Topic trends per person, circle or period ("what do I talk about with X", "how has Y's focus shifted").
    - Sentiment or energy trajectory per relationship. Use this carefully and show it only to you.
@@ -392,6 +438,8 @@ Example queries the layer should support:
 ---
 
 ## 8. Research vault specifics
+
+> **Deferred to the last phase** (personal comes first). It is kept here so the schema and resolution engine are built with it in mind.
 
 The research vault runs the same engine with stricter provenance and features for scale.
 
@@ -449,7 +497,7 @@ Keep it straightforward. These are eight views, built in priority order.
 
 ### 9.3 Remaining views
 
-3. **Capture:** a single text box ("Coffee with Sarah today, she's leaving Stripe...") that is parsed into a preview of the event, claims and follow-ups for you to confirm. Also plain forms for entity, event and relationship.
+3. **Capture:** plain forms for entity, event and relationship, with autocomplete that resolves names as you type (section 4.10). Also a single text box ("Coffee with Sarah today, she's leaving Stripe...") that the local model parses into a preview of the event, claims and follow-ups for you to confirm.
 4. **Timeline and calendar:** past and planned events, filterable by person, tag or kind.
 5. **Graph explorer:** ego network or project graph, filtered by type, tag, tier and time slider. Color by community. Includes a path finder ("warm path to X") and side-panel details.
 6. **Search:** one box combining keyword, semantic and structured filters, with facets.
@@ -470,267 +518,364 @@ The constraint being lifted is the cognitive limit: roughly 150 maintained relat
 4. **Warm-introduction paths.** Weighted shortest paths where an edge's cost is `−log(strength)`, so the strongest chain wins. Show the top three paths with the person you would ask at each hop.
 5. **Asks and offers matching.** Track what people need (hiring, raising, looking for a doctor, moving to Berlin) and what they offer (expertise, roles, introductions). Matching runs continuously and surfaces pairs.
 6. **Reciprocity awareness.** A lightweight record of favors given and received, used only for your own balance and never exposed. It helps you notice one-sided relationships in either direction.
-7. **Monitoring as an agent task.** Agents watch public sources (publications, company news, filings) for watchlisted entities and *propose* claims. You review them in the inbox.
+7. **Monitoring as an agent task** (optional, off by default because it needs network access). Agents watch public sources (publications, company news, filings) for watchlisted entities and *propose* claims, which you review in the inbox. Turn it on per watchlist. Outgoing queries contain only the public names you chose to watch, but a query still reveals your interest in that name.
 8. **Weekly review ritual.** An agent compiles the week: who you saw, loops closed and opened, ties decaying, opportunities, and goal progress. It drafts the next week's outreach.
 9. **Ask the network questions.** "Who could help with X?" is answered from topics, claims, publications and paths, not just from tags.
-10. **Agent interface.** An MCP server exposing tools such as `search`, `get_profile`, `log_event`, `propose_claim`, `due_outreach`, `find_paths`, `brief(entity)` and `research_query`. Agents can read but write **only proposals**, and every agent write is attributed and reversible.
+10. **Agent interface.** A local MCP server (stdio or localhost only) exposing tools such as `search`, `get_profile`, `log_event`, `propose_claim`, `due_outreach`, `find_paths`, `brief(entity)` and `research_query`. Agents can read but write **only proposals**, and every agent write is attributed and reversible.
 
 ---
 
 ## 11. Technology recommendations
 
+Chosen for a local-only, single-user tool that should feel like an app, not a server to run.
+
 | Concern | Recommendation | Why |
 |---|---|---|
-| System of record | **PostgreSQL 16+** with `pgvector`, `pg_trgm`, `fuzzystrmatch` and built-in full-text search | One engine for relational data, text, vectors and recursive graph queries; strong constraints and auditability |
-| Vault isolation | A separate database per vault, each with its own key (disk or column encryption) | Clean privacy boundary; the research vault can be shipped standalone |
-| Graph analytics | Nightly or on-demand projection into **igraph** or **NetworkX** (Python) for centrality, communities and paths. Add Neo4j or another graph DB only if interactive deep traversals become a bottleneck. | Keeps a single source of truth |
-| Batch ER | **Splink** (probabilistic linkage on DuckDB) for research-scale jobs, plus custom incremental matching for live entry | Proven, explainable match weights |
-| Backend | **Python + FastAPI**, with background workers for extraction, ER, scoring and triggers (a simple Postgres-backed job queue at first) | Matches your existing Python work and the data and ML ecosystem |
-| Frontend | **React (Vite) or SvelteKit**, Cytoscape.js and Sigma.js for graphs, vis-timeline for timelines | Simple and well supported |
-| LLM / embeddings | Pluggable provider. A hosted model for quality, with the option of a local model for sensitive personal notes. Store the model ID with every output. | Swappable; privacy control |
-| Analytics and export | DuckDB over Parquet exports for heavy semantic or statistical analysis | Fast local analysis at scale |
-| Deployment | Docker Compose locally (local-first). Hosted later if needed. | Personal data stays on your machine by default |
+| System of record | **SQLite** with **SQLCipher** (encryption), **FTS5** (full-text) and **sqlite-vec** (vectors); recursive CTEs for graph queries | One encrypted file, no setup or administration. Backup means copying the file. Comfortably handles a personal network with hundreds of thousands of facts, notes and chunks. |
+| Vault isolation | One file per vault, each with its own key | Clean privacy boundary. The research vault can later ship standalone. |
+| Key handling | Passphrase-derived key, optionally cached in the OS keychain | Data cannot be read if the file is copied |
+| Graph analytics | In-process **igraph** or **NetworkX** projections for centrality, communities and paths | No second database to keep in sync |
+| Entity resolution | In-app incremental matching (`rapidfuzz` for string similarity, `jellyfish` for phonetic keys, nickname tables). **Splink** (on DuckDB, also local) later for research-scale batch jobs. | Fast checks at entry time; explainable batch linkage later |
+| Backend | **Python + FastAPI** bound to `127.0.0.1` only, with an in-process background worker for extraction, scoring and triggers | Matches your existing Python work; nothing exposed to the network |
+| Frontend | **React (Vite) or SvelteKit** served locally in the browser. Cytoscape.js for graphs, vis-timeline for timelines. Optionally wrap as a desktop app with **Tauri** later. | Simple and well supported |
+| Local AI | **Ollama** or **llama.cpp** for a local instruction model, plus a local embedding model (e.g. bge-m3 or nomic-embed-text). Use structured JSON output against schemas. | Notes never leave the machine |
+| Outside AI | Optional, off by default, only through the privacy gateway (section 12.3) | Lets a larger model help with strategy without seeing personal details |
+| Analytics | DuckDB reading the SQLite file directly, for heavy semantic or statistical analysis | Fast local analysis at scale |
+| Packaging | A single Python package launched locally (`pip install`, then one command). No Docker required. | Low friction for daily use |
 
-**Alternative for maximum portability:** SQLite with FTS5, sqlite-vec and SQLCipher, giving one encrypted file per vault. This works well for the personal vault but scales less well for research. If you choose it, keep the schema identical so a vault can be promoted to Postgres later.
-
----
-
-## 12. Privacy, security and ethics
-
-- The data concerns **third parties** who did not opt in. Default to local-first storage, encryption at rest, and no telemetry.
-- Sensitivity labels on predicates (health, family, finances, politics, religion) control where data is shown, whether it is sent to remote LLMs, and whether it can be exported.
-- An append-only audit log of reads by agents and of all writes.
-- Research use: respect source licenses and terms of service; record collection method and legal basis; support redaction and deletion of entities and their derived data. Deletion is the one exception to append-only, and it is done as a crypto-shred of the blobs plus tombstones.
-- Recommendation features (reciprocity, sentiment) stay private to you and are never written into anything you might export or share.
+**When to move to Postgres:** only if the research vault grows to millions of records or sharing is ever added. Keep the schema portable (plain types, JSON stored as text, no SQLite-only tricks in core tables) so a vault can be promoted.
 
 ---
 
-## 13. Roadmap
+## 12. Privacy, security and the local AI gateway
+
+### 12.1 Baseline
+
+- **Local only.** One SQLCipher-encrypted file per vault. The core app makes no network calls; importers read local files.
+- **Backups** are encrypted file copies plus an optional JSON export, written to a location you choose, such as an external drive.
+- **Sensitivity labels** on predicates (health, family, finances, politics, religion) control what is shown, what any model sees, and what can be exported.
+- **Audit log:** an append-only record of every write, every agent read, and every outgoing request.
+- **Deletion** is the one exception to append-only: crypto-shred the blobs and leave tombstones.
+- **Third parties did not opt in.** Features like reciprocity and sentiment stay private to you and are never written into exports.
+
+### 12.2 Local model tier (the default)
+
+All AI tasks run locally by default: extraction from notes, embeddings, summaries, resolution of ambiguous duplicates, pre-meeting briefs and message drafts.
+
+Small local models do well when tasks are designed for them:
+- **The app assembles a short context.** It retrieves the relevant claims and note chunks and passes only those, instead of asking the model to read the whole vault.
+- **Output is structured.** The model returns JSON against a schema (for example, a list of proposed claims with predicates from the registry), and the app validates it.
+- **One narrow job per call:** extract, classify, summarize or compare.
+- **Model ID stored with every output**, so results can be re-run when you upgrade the model.
+
+### 12.3 Outside reasoning through abstraction (optional, off by default)
+
+Some tasks benefit from a larger outside model and do not need anyone's personal details: reasoning about network structure, introduction strategy, goal planning, or reviewing the patterns in your week. For these, the **privacy gateway** sends an abstracted version of the problem and translates the answer back locally.
+
+1. **Task-scoped context.** The app decides what the task needs. For "who should I introduce to whom", that is the relevant subgraph's structure, tiers, topics and categories of asks and offers. It never sends the whole vault.
+2. **Pseudonymize.** Each entity gets an alias for this request only (Person A, Org 3). The mapping stays in local memory and is discarded afterwards.
+3. **Generalize.** Exact values become categories:
+   - employer → industry and size ("large payments company");
+   - city → region;
+   - dates → relative ("about 3 months ago");
+   - ages → bands;
+   - job titles → seniority level.
+4. **Drop.** Free-text notes, identifiers (emails, phones, handles) and sensitive predicates never leave.
+5. **Check.** A local rule pass, optionally backed by the local model, scans the outgoing payload for names, contact details and rare values, and blocks the request if it finds any. A uniqueness check catches combinations that could identify someone even after generalizing (for example, "the only climate-tech founder in a small city"); it generalizes further or drops the attribute.
+6. **Preview and log.** You see the exact payload before it is sent. Later you can auto-approve trusted task types. Every request is recorded in the audit log.
+7. **Re-identify locally.** The answer refers to aliases. The app maps them back to real entities and writes the results as *proposals* for your review.
+
+Example of what actually leaves the machine:
+
+```json
+{
+  "task": "suggest_introductions",
+  "goal": "move into climate investing",
+  "people": [
+    {"id": "A", "tier": "close",    "sector": "fintech, large", "topics": ["payments", "climate"], "seeking": ["climate-tech roles"]},
+    {"id": "B", "tier": "extended", "sector": "venture capital", "topics": ["energy storage"],      "offering": ["intros to climate founders"]},
+    {"id": "C", "tier": "active",   "sector": "climate startup, early stage", "seeking": ["partnerships lead"]}
+  ],
+  "edges": [{"a": "A", "b": "B", "strength": 0.2}, {"a": "me", "b": "A", "strength": 0.8}, {"a": "me", "b": "B", "strength": 0.4}]
+}
+```
+
+**Caveat:** abstraction lowers risk but is not guaranteed anonymity. Network structure combined with categories can sometimes identify people. Keep outside reasoning opt-in for each task type and send the minimum.
+
+**Task routing:**
+
+| Task | Default | Can use outside model? |
+|---|---|---|
+| Extraction from notes | Local | No (free text) |
+| Embeddings and search | Local | No |
+| Profile summaries, briefs | Local | No |
+| Resolving ambiguous duplicates | Local | No (needs names and identifiers) |
+| Message drafting | Local | Only generic templates with no personal details |
+| Network strategy (brokerage, intro planning, paths toward goals) | Local | Yes, abstracted |
+| Weekly review analysis | Local | Yes, as abstracted aggregates |
+| Research on public entities (later phase) | Local | Yes, since public data is not personal; links to the personal vault are always stripped |
+
+---
+
+## 13. Roadmap (personal first)
 
 | Phase | Deliverable | Contents |
 |---|---|---|
-| **0: Foundation** | Personal MVP | Schema (vaults, sources, entities, identifiers, names, claims, events, participation, tags, relationship profiles); manual entry forms; profile page; Today view with days since contact, cadence and next due; timeline |
-| **1: Capture and memory** | Notes become structure | Natural-language quick capture with LLM extraction into proposed claims; review inbox; chunking, full-text search and embeddings; hybrid search; auto-generated "memory" summaries; "changed since last contact" |
-| **2: ER and triggers** | Clean data at scale | Deterministic and probabilistic matching; merge, split and not-the-same decisions with undo; imports (contacts, calendar, LinkedIn CSV); trigger engine (dates, calendar offsets, fact changes, commitments); pre-meeting briefs; graph explorer |
-| **3: Research vault** | Standalone research tool | Projects; source library with snapshots and reliability grades; bulk connectors; Splink batch ER; as-of queries; contradictions; hypotheses matrix; FtM, GraphML and CSV export; large-graph view |
-| **4: Strategic and agentic** | Leverage beyond human capacity | MCP server; watchlist monitoring; goals; warm paths; brokerage and introduction suggestions; asks and offers matching; weekly review agent; topic and expertise analytics |
+| **0: Foundation** | Personal MVP you use daily | Encrypted SQLite vault; schema (sources, entities, identifiers, names, claims, events, participation, tags, relationship profiles); forms for entities, events and relationships with resolve-as-you-type autocomplete; profile page; Today view with days since contact, cadence and next due; timeline; JSON export and backup |
+| **1: Capture and memory** | Notes become structure | Quick-capture box parsed by the local model into proposed claims; review inbox; commitments (open loops); FTS5 and local embeddings; hybrid search; "memory" summaries; "changed since last contact" |
+| **2: Importers, resolution and triggers** | Data from elsewhere, kept clean | Importer contract with vCard, iCal, CSV and JSON importers, dry-run diff and batch rollback; background duplicate resolution (merge, split, not-the-same, undo); trigger engine (recurring dates, calendar offsets, fact changes, commitments); pre-meeting briefs; graph explorer |
+| **3: Strategic** | Leverage beyond human capacity | Goals; warm-introduction paths; brokerage and introduction suggestions; asks and offers matching; weekly review; local MCP server; privacy gateway for optional outside reasoning |
+| **4: Research vault** | Standalone research tool | Projects; source library with snapshots and reliability grades; bulk importers (OpenAlex, ORCID, Wikidata and others); Splink batch resolution; as-of queries; contradictions; hypotheses matrix; FtM, GraphML and CSV export; large-graph view (Sigma.js) |
 
-**Suggested first build slice (about two weeks of evenings):** Phase 0 plus the quick-capture text box, with extraction stubbed by a simple form. This gets the daily loop (log interaction, see who is due) working before any ML, and starts producing the data the later layers need.
-
----
-
-## 14. Open decisions for you
-
-1. **Local-first or hosted?** This affects encryption, sync across devices and LLM choice. (Recommendation: local-first, with optional encrypted sync later.)
-2. **Single user only, or will research vaults be shared with collaborators?** Sharing adds permissions and per-user provenance; the schema already supports the latter.
-3. **Which data sources first?** Calendar and contacts give the most value for the least effort. Email bodies give the richest data but carry the highest privacy cost; metadata only is a reasonable middle ground.
-4. **LLM provider policy for personal notes:** hosted, local, or hosted with the `sensitive` predicates redacted.
-5. **Research domain:** academic networks, corporate or financial investigations, historical, or OSINT. This decides which connectors and type packs (for example FtM) to build first.
+**Suggested first build slice:** Phase 0 alone. It gets the daily loop working with no AI at all: enter people, log interactions, and see who is due. Every later layer then has real data to work on.
 
 ---
 
-## Appendix A: Schema sketch (Postgres)
+## 14. Remaining questions
+
+These are smaller, and none blocks Phase 0.
+
+1. **Hardware for the local model.** How much RAM and what GPU or Apple Silicon chip do you have? This sets the model size, and extraction quality in Phase 1 depends on it.
+2. **Browser or desktop app?** I recommend a browser tab at localhost first, then a Tauri desktop wrapper once the views settle.
+3. **Capturing from your phone.** Local-only makes this harder. One option keeps everything local: write notes in any app, drop the file into an inbox folder, and an importer picks it up. Is phone capture important to you?
+4. **Starter fields per person.** Which facts matter most to you (e.g. how you met, family, interests, work history, location, important dates)? That decides the first predicates in the registry and the layout of the forms.
+5. **Default cadence per tier.** Are the defaults in section 6.1 (14, 30, 60, 120 and 365 days) about right for how you work?
+
+---
+
+## Appendix A: Schema sketch (SQLite)
 
 Illustrative only. Names and types will change during implementation.
+
+- IDs are text (UUIDv7 or ULID, so they sort by creation time).
+- JSON is stored as text and queried with SQLite's JSON functions.
+- Dates are ISO-8601 text.
+- Booleans are integers.
+- Run with `PRAGMA foreign_keys = ON` and WAL journal mode.
 
 ```sql
 -- ── Registries ─────────────────────────────────────────────────────────────
 create table entity_type (
-  id text primary key,                 -- 'person', 'organization', 'event', ...
-  parent_id text references entity_type(id),
-  attr_schema jsonb not null default '{}'   -- JSON Schema for type-specific attributes
+  id          text primary key,              -- 'person', 'organization', 'event', ...
+  parent_id   text references entity_type(id),
+  attr_schema text not null default '{}'     -- JSON Schema for type-specific attributes
 );
 
 create table predicate (
-  id text primary key,                 -- 'employed_by', 'birth_date', 'knows', ...
-  label text not null,
-  domain_types text[] not null,        -- allowed subject types
-  range_kind text not null,            -- 'entity' | 'string' | 'date' | 'number' | 'json'
-  range_types text[],                  -- allowed object types when range_kind = 'entity'
-  cardinality text not null default 'many',  -- 'one' | 'many'
-  temporal boolean not null default true,
-  symmetric boolean not null default false,
-  inverse_id text references predicate(id),
-  sensitivity text not null default 'normal' -- 'normal' | 'sensitive' | 'restricted'
+  id           text primary key,             -- 'employed_by', 'birth_date', 'knows', ...
+  label        text not null,
+  domain_types text not null,                -- JSON array of allowed subject types
+  range_kind   text not null,                -- 'entity' | 'string' | 'date' | 'number' | 'json'
+  range_types  text,                         -- JSON array of object types when range_kind = 'entity'
+  cardinality  text not null default 'many', -- 'one' | 'many'
+  temporal     integer not null default 1,
+  symmetric    integer not null default 0,
+  inverse_id   text references predicate(id),
+  sensitivity  text not null default 'normal' -- 'normal' | 'sensitive' | 'restricted'
 );
 
 -- ── Evidence (L0/L1) ───────────────────────────────────────────────────────
-create table source (
-  id uuid primary key,
-  kind text not null,                  -- note | email | calendar | web | paper | filing | import | manual
-  uri text,
-  title text,
-  content_hash text not null,
-  blob_ref text,                       -- pointer to stored original
-  captured_at timestamptz not null default now(),
-  published_at timestamptz,
-  reliability char(1),                 -- Admiralty A–F (research)
-  credibility smallint,                -- Admiralty 1–6 (research)
-  metadata jsonb not null default '{}'
+create table import_batch (
+  id          text primary key,
+  importer    text not null,                 -- 'vcard@1', 'ical@1', 'csv:<mapping>@1', ...
+  file_name   text,
+  file_hash   text,
+  started_at  text not null default (datetime('now')),
+  status      text not null default 'preview', -- preview | applied | rolled_back
+  stats       text not null default '{}'
 );
+
+create table source (
+  id            text primary key,
+  kind          text not null,               -- manual | note | calendar | import | web | paper | ...
+  import_batch_id text references import_batch(id),
+  external_key  text,                        -- for idempotent re-import
+  uri           text,
+  title         text,
+  content       text,                        -- raw text (notes, rows); large blobs stored beside the file
+  content_hash  text not null,
+  captured_at   text not null default (datetime('now')),
+  published_at  text,
+  reliability   text,                        -- Admiralty A–F (research)
+  credibility   integer,                     -- Admiralty 1–6 (research)
+  metadata      text not null default '{}'
+);
+create unique index source_external on source(kind, external_key) where external_key is not null;
 
 create table chunk (
-  id uuid primary key,
-  source_id uuid not null references source(id),
-  ordinal int not null,
-  text text not null,
-  tsv tsvector generated always as (to_tsvector('english', text)) stored,
-  embedding vector(1024),
-  embedding_model text
+  id        text primary key,
+  source_id text not null references source(id),
+  ordinal   integer not null,
+  text      text not null
 );
+create virtual table chunk_fts using fts5(text, content='chunk', content_rowid='rowid');
+create virtual table chunk_vec using vec0(chunk_rowid integer primary key, embedding float[1024]);
+create table embedding_meta (target text primary key, model text not null, dims integer not null);
 
 create table mention (
-  id uuid primary key,
-  source_id uuid not null references source(id),
-  chunk_id uuid references chunk(id),
-  span int4range,
-  surface text not null,
+  id         text primary key,
+  source_id  text not null references source(id),
+  chunk_id   text references chunk(id),
+  span_start integer, span_end integer,
+  surface    text not null,
   type_guess text references entity_type(id),
-  features jsonb not null default '{}',   -- normalized name parts, phonetic keys, context
-  entity_id uuid,                          -- current resolution (nullable)
+  features   text not null default '{}',     -- normalized name parts, phonetic keys, context
+  entity_id  text references entity(id),     -- current resolution (nullable)
   resolution_score real
 );
 
 -- ── Knowledge (L2) ─────────────────────────────────────────────────────────
 create table entity (
-  id uuid primary key,
-  type_id text not null references entity_type(id),
+  id           text primary key,
+  type_id      text not null references entity_type(id),
   display_name text not null,
-  status text not null default 'active',   -- active | merged | archived | deleted
-  merged_into uuid references entity(id),
-  engagement text,                          -- ego | contact | acquaintance | reference (personal)
-  attrs jsonb not null default '{}',
-  created_at timestamptz not null default now()
+  status       text not null default 'active', -- active | merged | archived | deleted
+  merged_into  text references entity(id),
+  engagement   text,                           -- ego | contact | acquaintance | reference
+  attrs        text not null default '{}',
+  created_at   text not null default (datetime('now'))
 );
+create virtual table entity_name_fts using fts5(name, entity_id unindexed); -- autocomplete at entry
 
 create table identifier (
-  entity_id uuid not null references entity(id),
-  scheme text not null,                     -- email | phone | orcid | doi | lei | wikidata | url | handle
-  value text not null,                      -- normalized
-  verified boolean not null default false,
-  source_id uuid references source(id),
+  entity_id text not null references entity(id),
+  scheme    text not null,                   -- email | phone | orcid | doi | lei | wikidata | url | handle
+  value     text not null,                   -- normalized
+  verified  integer not null default 0,
+  source_id text references source(id),
   primary key (scheme, value, entity_id)
 );
 
 create table entity_name (
-  entity_id uuid not null references entity(id),
-  name text not null,
-  kind text not null default 'primary',     -- primary | legal | nickname | former | transliteration
-  valid_from date, valid_to date
+  entity_id  text not null references entity(id),
+  name       text not null,
+  kind       text not null default 'primary', -- primary | legal | nickname | former | transliteration
+  valid_from text, valid_to text
 );
 
 create table claim (
-  id uuid primary key,
-  subject_id uuid not null references entity(id),
-  predicate_id text not null references predicate(id),
-  object_id uuid references entity(id),     -- set for edges
-  value jsonb,                              -- set for attributes
-  qualifiers jsonb not null default '{}',
-  valid_from date, valid_to date,
-  time_precision text,                      -- day | month | year | decade | circa
-  confidence real not null default 1.0,
-  status text not null default 'proposed',  -- proposed | accepted | rejected | disputed | superseded
-  asserted_by text not null,                -- 'user' | 'import:<name>' | 'rule:<id>' | 'model:<id>@<ver>'
-  recorded_at timestamptz not null default now(),
-  superseded_by uuid references claim(id),
+  id             text primary key,
+  subject_id     text not null references entity(id),
+  predicate_id   text not null references predicate(id),
+  object_id      text references entity(id),  -- set for edges
+  value          text,                        -- JSON, set for attributes
+  qualifiers     text not null default '{}',
+  valid_from     text, valid_to text,
+  time_precision text,                        -- day | month | year | decade | circa
+  confidence     real not null default 1.0,
+  status         text not null default 'proposed', -- proposed | accepted | rejected | disputed | superseded
+  asserted_by    text not null,               -- 'user' | 'import:<batch>' | 'rule:<id>' | 'model:<id>@<ver>'
+  recorded_at    text not null default (datetime('now')),
+  superseded_by  text references claim(id),
   check ((object_id is null) <> (value is null))
 );
+create index claim_subject on claim(subject_id, predicate_id, status);
+create index claim_object  on claim(object_id) where object_id is not null;
 
 create table claim_evidence (
-  claim_id uuid not null references claim(id),
-  source_id uuid not null references source(id),
-  span int4range,
-  note text,
+  claim_id   text not null references claim(id),
+  source_id  text not null references source(id),
+  span_start integer, span_end integer,
+  note       text,
   primary key (claim_id, source_id)
 );
 
 create table event_detail (
-  entity_id uuid primary key references entity(id),
-  kind text not null,
-  status text not null,                     -- planned | occurred | cancelled | missed
-  start_at timestamptz, end_at timestamptz,
-  time_precision text,
-  location_id uuid references entity(id),
-  channel text,
-  initiated_by uuid references entity(id),
-  counts_as_contact boolean not null default true,
-  notes_source_id uuid references source(id)
+  entity_id         text primary key references entity(id),
+  kind              text not null,
+  status            text not null,            -- planned | occurred | cancelled | missed
+  start_at          text, end_at text,
+  time_precision    text,
+  location_id       text references entity(id),
+  channel           text,
+  initiated_by      text references entity(id),
+  counts_as_contact integer not null default 1,
+  notes_source_id   text references source(id)
 );
 
 create table participation (
-  event_id uuid not null references entity(id),
-  entity_id uuid not null references entity(id),
-  role text not null default 'attendee',
+  event_id  text not null references entity(id),
+  entity_id text not null references entity(id),
+  role      text not null default 'attendee',
   primary key (event_id, entity_id, role)
 );
 
-create table tag (id uuid primary key, namespace text, name text not null, parent_id uuid references tag(id));
-create table tagging (tag_id uuid references tag(id), target_kind text, target_id uuid,
+create table tag (id text primary key, namespace text, name text not null, parent_id text references tag(id));
+create table tagging (tag_id text not null references tag(id), target_kind text not null, target_id text not null,
                       primary key (tag_id, target_kind, target_id));
 
 -- ── Personal relationship layer ────────────────────────────────────────────
 create table relationship_profile (
-  entity_id uuid primary key references entity(id),
-  tier text not null default 'active',
-  cadence_days int,                         -- override; null means use tier default or learned value
-  closeness_self smallint,
-  how_met_event_id uuid references entity(id),
-  introduced_by uuid references entity(id)
+  entity_id        text primary key references entity(id),
+  tier             text not null default 'active',
+  cadence_days     integer,                    -- override; null means tier default or learned value
+  closeness_self   integer,
+  how_met_event_id text references entity(id),
+  introduced_by    text references entity(id)
 );
 
 create table commitment (
-  id uuid primary key,
-  from_id uuid references entity(id),
-  to_id uuid references entity(id),
-  kind text not null,                       -- promise | ask | offer
-  description text not null,
-  due_at date,
-  status text not null default 'open',
-  source_event_id uuid references entity(id)
+  id              text primary key,
+  from_id         text references entity(id),
+  to_id           text references entity(id),
+  kind            text not null,               -- promise | ask | offer
+  description     text not null,
+  due_at          text,
+  status          text not null default 'open',
+  source_event_id text references entity(id)
 );
 
-create table trigger_rule (id uuid primary key, scope jsonb, kind text, params jsonb, active boolean default true);
+create table trigger_rule (id text primary key, scope text, kind text not null, params text, active integer default 1);
 
 create table outreach_item (
-  id uuid primary key,
-  entity_id uuid not null references entity(id),
-  rule_id uuid references trigger_rule(id),
-  due_at date not null,
-  reason text not null,                     -- shown to you as-is
-  status text not null default 'open',      -- open | done | snoozed | dismissed
-  resolved_by_event_id uuid references entity(id)
+  id                   text primary key,
+  entity_id            text not null references entity(id),
+  rule_id              text references trigger_rule(id),
+  due_at               text not null,
+  reason               text not null,          -- shown to you as-is
+  status               text not null default 'open', -- open | done | snoozed | dismissed
+  resolved_by_event_id text references entity(id)
 );
 
-create table goal (id uuid primary key, title text, description text, horizon date, active boolean default true);
-create table goal_link (goal_id uuid references goal(id), target_kind text, target_id uuid, relevance real,
-                        primary key (goal_id, target_kind, target_id));
+create table goal (id text primary key, title text not null, description text, horizon text, active integer default 1);
+create table goal_link (goal_id text not null references goal(id), target_kind text not null, target_id text not null,
+                        relevance real, primary key (goal_id, target_kind, target_id));
 
--- ── Resolution and cross-vault ─────────────────────────────────────────────
+-- ── Resolution, cross-vault and audit ──────────────────────────────────────
 create table resolution_decision (
-  id uuid primary key,
-  kind text not null,                       -- merge | split | not_same | link_mention | cross_vault_link
-  payload jsonb not null,                   -- entity and mention IDs involved
-  decided_by text not null,                 -- user | rule:<id> | model:<id>@<ver>
-  score real,
-  features jsonb,
-  rationale text,
-  decided_at timestamptz not null default now(),
-  reverted_by uuid references resolution_decision(id)
+  id          text primary key,
+  kind        text not null,                   -- merge | split | not_same | link_mention | cross_vault_link
+  payload     text not null,                   -- JSON: entity and mention IDs involved
+  decided_by  text not null,                   -- user | rule:<id> | model:<id>@<ver>
+  score       real,
+  features    text,
+  rationale   text,
+  decided_at  text not null default (datetime('now')),
+  reverted_by text references resolution_decision(id)
 );
 
 create table cross_vault_link (
-  personal_entity_id uuid not null references entity(id),
-  research_vault text not null,
-  research_entity_id uuid not null,         -- foreign ID in the other database
-  confirmed_at timestamptz,
+  personal_entity_id text not null references entity(id),
+  research_vault     text not null,            -- vault file name
+  research_entity_id text not null,            -- ID in the other file
+  confirmed_at       text,
   primary key (personal_entity_id, research_vault, research_entity_id)
+);
+
+create table audit_log (
+  id      integer primary key,
+  at      text not null default (datetime('now')),
+  actor   text not null,                       -- user | importer | rule | model | agent:<name>
+  action  text not null,                       -- write | read | egress
+  target  text,
+  detail  text                                 -- JSON; for egress: task type, payload hash, approved_by
 );
 
 -- ── Derived (L3), recomputed ───────────────────────────────────────────────
 create view contact_status as
 select rp.entity_id,
-       max(ed.start_at) filter (where ed.status = 'occurred' and ed.counts_as_contact) as last_contact_at,
-       min(ed.start_at) filter (where ed.status = 'planned' and ed.start_at > now())   as next_scheduled_at
+       max(ed.start_at) filter (where ed.status = 'occurred' and ed.counts_as_contact = 1) as last_contact_at,
+       min(ed.start_at) filter (where ed.status = 'planned' and ed.start_at > datetime('now')) as next_scheduled_at
 from relationship_profile rp
 left join participation p on p.entity_id = rp.entity_id
 left join event_detail ed on ed.entity_id = p.event_id
